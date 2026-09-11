@@ -316,17 +316,20 @@ document.addEventListener('DOMContentLoaded', () => {
         if (res.ok && data.results) {
           bulkResults.innerHTML = data.results.map((r, index) => {
             const isOk = r.status === 'success';
+            const isSkipped = r.status === 'skipped';
             return `
               <div class="bulk-item">
                 <div>
                   <span class="bulk-item-phone">${r.phone}</span>
-                  <div style="font-size: 0.75rem; color: var(--text-muted);">${r.message || ''}</div>
+                  <div style="font-size: 0.75rem; color: ${isSkipped ? 'var(--accent-amber)' : 'var(--text-muted)'};">${r.message || ''}</div>
                 </div>
                 <div>
                   ${isOk ? `
                     <button class="btn btn-primary btn-sm" onclick="promptBulkOtp('${r.token}', '${r.phone}')">
                       Isi OTP
                     </button>
+                  ` : isSkipped ? `
+                    <span class="badge-status" style="background: rgba(245, 158, 11, 0.15); color: var(--accent-amber); border: 1px solid rgba(245, 158, 11, 0.3);">Dilewati</span>
                   ` : `
                     <span class="badge-status error">Gagal</span>
                   `}

@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from services.auth_service import get_current_user
 from services.client_manager import client_manager
+from database.models import TelegramAccountModel
 
 router = APIRouter()
 
@@ -79,18 +80,33 @@ async def refresh_qr(token: str, current_user: dict = Depends(get_current_user))
 
 @router.post("/login/bulk")
 async def start_bulk_login(req: BulkLoginRequest, current_user: dict = Depends(get_current_user)):
-    """Initiates login for multiple phone numbers sequentially."""
+    """Initiates login for multiple phone numbers sequentially with internal deduplication and skip-existing check."""
     results = []
+    seen = set()
     cleaned_phones = []
-    
+
+    # 1. Deduplicate internal list (removes duplicate numbers in the submitted text)
     for p in req.phones:
         phone = p.strip().replace(" ", "").replace("-", "")
         if phone:
             if not phone.startswith("+"):
                 phone = f"+{phone}"
-            cleaned_phones.append(phone)
+            if phone not in seen:
+                seen.add(phone)
+                cleaned_phones.append(phone)
 
+    # 2. Process numbers (automatically skip if already in dashboard database)
     for phone in cleaned_phones:
+        existing = await TelegramAccountModel.get_by_phone(current_user["id"], phone)
+        if existing:
+            results.append({
+                "phone": phone,
+                "status": "skipped",
+                "token": None,
+                "message": "Dilewati (Nomor sudah terdaftar di dashboard)"
+            })
+            continue
+
         res = await client_manager.start_phone_login(phone, current_user["id"])
         results.append({
             "phone": phone,

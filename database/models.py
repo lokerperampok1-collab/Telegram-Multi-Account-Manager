@@ -39,7 +39,31 @@ class UserModel:
 
 class TelegramAccountModel:
     @staticmethod
-    async def create(
+    async def get_by_phone(user_id: int, phone_number: str) -> Optional[dict]:
+        """Retrieves account by phone number for a user to detect duplicates."""
+        async with aiosqlite.connect(settings.DB_PATH) as db:
+            db.row_factory = aiosqlite.Row
+            cursor = await db.execute(
+                "SELECT * FROM telegram_accounts WHERE user_id = ? AND phone_number = ?",
+                (user_id, phone_number)
+            )
+            row = await cursor.fetchone()
+            return dict(row) if row else None
+
+    @staticmethod
+    async def get_by_telegram_id(user_id: int, telegram_id: int) -> Optional[dict]:
+        """Retrieves account by telegram user id to detect duplicates."""
+        async with aiosqlite.connect(settings.DB_PATH) as db:
+            db.row_factory = aiosqlite.Row
+            cursor = await db.execute(
+                "SELECT * FROM telegram_accounts WHERE user_id = ? AND telegram_id = ?",
+                (user_id, telegram_id)
+            )
+            row = await cursor.fetchone()
+            return dict(row) if row else None
+
+    @staticmethod
+    async def upsert(
         user_id: int,
         session_string: str,
         phone_number: Optional[str] = None,
@@ -47,18 +71,59 @@ class TelegramAccountModel:
         username: Optional[str] = None,
         telegram_id: Optional[int] = None,
         is_active: bool = True
-    ) -> int:
+    ) -> tuple[int, bool]:
+        """
+        Inserts new account or updates existing account if telegram_id or phone_number already exists.
+        Guarantees 100% no duplicate account cards in dashboard.
+        Returns: (account_id, is_updated: bool)
+        """
         async with aiosqlite.connect(settings.DB_PATH) as db:
-            cursor = await db.execute(
-                """
-                INSERT INTO telegram_accounts 
-                (user_id, phone_number, display_name, username, telegram_id, session_string, is_active, last_connected)
-                VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-                """,
-                (user_id, phone_number, display_name, username, telegram_id, session_string, 1 if is_active else 0)
-            )
-            await db.commit()
-            return cursor.lastrowid
+            db.row_factory = aiosqlite.Row
+
+            existing = None
+            if telegram_id:
+                cur = await db.execute(
+                    "SELECT id FROM telegram_accounts WHERE user_id = ? AND telegram_id = ?",
+                    (user_id, telegram_id)
+                )
+                existing = await cur.fetchone()
+
+            if not existing and phone_number:
+                cur = await db.execute(
+                    "SELECT id FROM telegram_accounts WHERE user_id = ? AND phone_number = ?",
+                    (user_id, phone_number)
+                )
+                existing = await cur.fetchone()
+
+            if existing:
+                account_id = existing["id"]
+                await db.execute(
+                    """
+                    UPDATE telegram_accounts 
+                    SET session_string = ?,
+                        phone_number = COALESCE(?, phone_number),
+                        display_name = COALESCE(?, display_name),
+                        username = COALESCE(?, username),
+                        telegram_id = COALESCE(?, telegram_id),
+                        is_active = ?,
+                        last_connected = CURRENT_TIMESTAMP
+                    WHERE id = ?
+                    """,
+                    (session_string, phone_number, display_name, username, telegram_id, 1 if is_active else 0, account_id)
+                )
+                await db.commit()
+                return account_id, True
+            else:
+                cursor = await db.execute(
+                    """
+                    INSERT INTO telegram_accounts 
+                    (user_id, phone_number, display_name, username, telegram_id, session_string, is_active, last_connected)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                    """,
+                    (user_id, phone_number, display_name, username, telegram_id, session_string, 1 if is_active else 0)
+                )
+                await db.commit()
+                return cursor.lastrowid, False
 
     @staticmethod
     async def list_by_user(user_id: int) -> List[dict]:

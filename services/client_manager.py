@@ -275,7 +275,7 @@ class ClientManager:
             if phone_number and not phone_number.startswith("+"):
                 phone_number = f"+{phone_number}"
 
-            account_id = await TelegramAccountModel.create(
+            account_id, is_updated = await TelegramAccountModel.upsert(
                 user_id=user_id,
                 session_string=encrypted_session,
                 phone_number=phone_number,
@@ -285,12 +285,21 @@ class ClientManager:
                 is_active=True
             )
 
+            # Disconnect existing client instance if any
+            old_client = self._active_clients.get(account_id)
+            if old_client and old_client != client:
+                try:
+                    await old_client.disconnect()
+                except Exception:
+                    pass
+
             # Keep active in memory
             self._active_clients[account_id] = client
 
             # Clean pending references
             self._pending_logins.pop(token, None)
 
+            msg = f"Berhasil memperbarui sesi akun {display_name or phone_number}!" if is_updated else f"Berhasil menghubungkan akun {display_name or phone_number}!"
             return {
                 "status": "success",
                 "account_id": account_id,
@@ -298,7 +307,8 @@ class ClientManager:
                 "phone_number": phone_number,
                 "display_name": display_name,
                 "username": me.username,
-                "message": f"Successfully connected account {display_name or phone_number}!"
+                "is_updated": is_updated,
+                "message": msg
             }
         except Exception as e:
             return {"status": "error", "message": f"Failed to save account: {str(e)}"}
@@ -593,7 +603,7 @@ class ClientManager:
             if phone_number and not phone_number.startswith("+"):
                 phone_number = f"+{phone_number}"
 
-            account_id = await TelegramAccountModel.create(
+            account_id, is_updated = await TelegramAccountModel.upsert(
                 user_id=user_id,
                 session_string=encrypted_session,
                 phone_number=phone_number,
@@ -602,15 +612,23 @@ class ClientManager:
                 telegram_id=me.id,
                 is_active=True
             )
+            old_client = self._active_clients.get(account_id)
+            if old_client and old_client != client:
+                try:
+                    await old_client.disconnect()
+                except Exception:
+                    pass
             self._active_clients[account_id] = client
 
+            msg = f"Berhasil memperbarui sesi akun: {display_name or phone_number}!" if is_updated else f"Berhasil mengimpor akun baru: {display_name or phone_number}!"
             return {
                 "status": "success",
                 "account_id": account_id,
                 "name": display_name,
                 "phone": phone_number,
                 "username": me.username,
-                "message": f"Berhasil mengimpor akun {display_name or phone_number}!"
+                "is_updated": is_updated,
+                "message": msg
             }
         except Exception as e:
             return {"status": "error", "message": f"Gagal memvalidasi StringSession: {str(e)}"}
