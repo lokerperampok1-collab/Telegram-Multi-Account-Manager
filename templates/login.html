@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Login - Telegram Multi-Account Manager</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+  <div class="auth-wrapper">
+    <div class="glass-panel auth-card">
+      <div class="auth-header">
+        <div class="brand-icon" style="margin: 0 auto;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21.198 2.433a2.242 2.242 0 0 0-1.022.215l-16.5 7.5a2.25 2.25 0 0 0 .126 4.143l4.63 1.543 2.11 6.33a2.25 2.25 0 0 0 4.092.384l2.76-4.14 4.542 3.407a2.25 2.25 0 0 0 3.564-1.503l3-15a2.25 2.25 0 0 0-2.302-2.579z"/>
+          </svg>
+        </div>
+        <h2>Masuk Dashboard</h2>
+        <p style="color: var(--text-secondary); font-size: 0.9rem;">Kelola semua akun Telegram Anda dalam satu portal</p>
+      </div>
+
+      <form id="login-form">
+        <div class="form-group">
+          <label class="form-label" for="username">Username</label>
+          <input type="text" id="username" class="form-input" placeholder="Masukkan username" required autofocus>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="password">Password</label>
+          <input type="password" id="password" class="form-input" placeholder="Masukkan password" required>
+        </div>
+
+        <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 12px;" id="login-btn">
+          <span>Masuk</span>
+        </button>
+      </form>
+
+      <div class="auth-footer">
+        Belum punya akun dashboard? <a href="/register">Daftar sekarang</a>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast-container"></div>
+  <script src="/static/js/app.js"></script>
+  <script src="/static/js/auth.js"></script>
+  <script>
+    // Redirect if already logged in
+    if (localStorage.getItem('token')) {
+      window.location.href = '/';
+    }
+    
+    document.getElementById('login-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn = document.getElementById('login-btn');
+      btn.disabled = true;
+      btn.innerHTML = '<div class="spinner"></div>';
+      
+      const username = document.getElementById('username').value;
+      const password = document.getElementById('password').value;
+
+      try {
+        const res = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({username, password})
+        });
+        const data = await res.json();
+        if (res.ok) {
+          localStorage.setItem('token', data.access_token);
+          localStorage.setItem('user', JSON.stringify(data.user));
+          showToast('Login berhasil! Mengalihkan...', 'success');
+          setTimeout(() => window.location.href = '/', 800);
+        } else {
+          showToast(data.detail || 'Login gagal', 'error');
+        }
+      } catch (err) {
+        showToast('Koneksi server gagal', 'error');
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<span>Masuk</span>';
+      }
+    });
+  </script>
+</body>
+</html>
