@@ -8,7 +8,7 @@ let qrTimeLeft = 30;
 // ------------------- PHONE LOGIN FLOW -------------------
 
 document.addEventListener('DOMContentLoaded', () => {
-  const sendPhoneBtn = document.getElementById('send-phone-btn');
+  const sendPhoneBtn = document.getElementById('send-phone-btn') || document.getElementById('send-code-btn');
   const verifyOtpBtn = document.getElementById('verify-otp-btn');
   const cancelOtpBtn = document.getElementById('cancel-otp-btn');
   const verify2faBtn = document.getElementById('verify-2fa-btn');

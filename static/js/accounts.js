@@ -50,6 +50,10 @@ async function loadAccounts(targetPage = null) {
       if (countBadge) {
         countBadge.textContent = `${accountPagination.total} Akun`;
       }
+      const navBadge = document.getElementById('nav-account-count');
+      if (navBadge) {
+        navBadge.textContent = accountPagination.total;
+      }
     } else {
       showToast(data.detail || 'Gagal mengambil daftar akun', 'error');
     }

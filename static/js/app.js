@@ -71,24 +71,90 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     }
 
-    // Tab Switching
-    const tabBtns = document.querySelectorAll('.tab-btn');
-    tabBtns.forEach(btn => {
-      btn.addEventListener('click', () => {
-        tabBtns.forEach(b => b.classList.remove('active'));
-        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-        
-        btn.classList.add('active');
-        const targetId = btn.getAttribute('data-tab');
-        const target = document.getElementById(targetId);
-        if (target) {
-          target.classList.add('active');
-          if (targetId === 'qr-tab') {
-            // Trigger QR generation if clicked
-            if (window.startQRFlow) window.startQRFlow();
-          }
+    // Mobile Drawer Toggle
+    const hamburgerBtn = document.getElementById('hamburger-btn');
+    const sidebarCloseBtn = document.getElementById('sidebar-close-btn');
+    const sidebar = document.getElementById('app-sidebar');
+    const overlay = document.getElementById('sidebar-overlay');
+
+    function openSidebar() {
+      if (sidebar) sidebar.classList.add('sidebar-open');
+      if (overlay) overlay.classList.add('active');
+    }
+
+    function closeSidebar() {
+      if (sidebar) sidebar.classList.remove('sidebar-open');
+      if (overlay) overlay.classList.remove('active');
+    }
+
+    if (hamburgerBtn) hamburgerBtn.addEventListener('click', openSidebar);
+    if (sidebarCloseBtn) sidebarCloseBtn.addEventListener('click', closeSidebar);
+    if (overlay) overlay.addEventListener('click', closeSidebar);
+
+    // Luxury View Switcher
+    const navItems = document.querySelectorAll('.nav-item[data-view]');
+    const topbarTitle = document.getElementById('topbar-view-title');
+
+    navItems.forEach(item => {
+      item.addEventListener('click', (e) => {
+        e.preventDefault();
+        const targetViewId = item.getAttribute('data-view');
+        const targetPanel = document.getElementById(targetViewId);
+        if (!targetPanel) return;
+
+        // Update active nav button
+        navItems.forEach(n => n.classList.remove('active'));
+        item.classList.add('active');
+
+        // Update active view panel
+        document.querySelectorAll('.view-panel').forEach(p => p.classList.remove('active'));
+        targetPanel.classList.add('active');
+
+        // Update topbar breadcrumb title
+        const labelText = item.querySelector('.nav-text')?.textContent || 'Dashboard';
+        if (topbarTitle) topbarTitle.textContent = labelText;
+
+        // Auto close drawer on mobile after selection
+        closeSidebar();
+
+        // Specific view triggers
+        if (targetViewId === 'view-qr') {
+          if (window.startQRFlow) window.startQRFlow();
+        } else if (targetViewId === 'view-accounts') {
+          if (window.loadAccounts) window.loadAccounts();
         }
+
+        // Scroll smoothly to top
+        window.scrollTo({ top: 0, behavior: 'smooth' });
       });
     });
+
+    // Sidebar Action Buttons
+    const sideCheckHealthBtn = document.getElementById('sidebar-check-health-btn');
+    if (sideCheckHealthBtn) {
+      sideCheckHealthBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        closeSidebar();
+        if (window.checkAllAccountsHealth) window.checkAllAccountsHealth();
+      });
+    }
+
+    const sideExportJsonBtn = document.getElementById('sidebar-export-json-btn');
+    if (sideExportJsonBtn) {
+      sideExportJsonBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        closeSidebar();
+        if (window.triggerExport) window.triggerExport('json');
+      });
+    }
+
+    const sideExportTxtBtn = document.getElementById('sidebar-export-txt-btn');
+    if (sideExportTxtBtn) {
+      sideExportTxtBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        closeSidebar();
+        if (window.triggerExport) window.triggerExport('txt');
+      });
+    }
   }
 });

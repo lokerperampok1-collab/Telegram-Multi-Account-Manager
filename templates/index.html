@@ -6,428 +6,620 @@
   <title>Telegram Multi-Account Manager</title>
   <link rel="stylesheet" href="/static/css/style.css">
 </head>
-<body>
-  <div class="container">
-    <!-- Navbar -->
-    <header class="glass-panel navbar">
-      <a href="/" class="brand">
-        <div class="brand-icon">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M21.198 2.433a2.242 2.242 0 0 0-1.022.215l-16.5 7.5a2.25 2.25 0 0 0 .126 4.143l4.63 1.543 2.11 6.33a2.25 2.25 0 0 0 4.092.384l2.76-4.14 4.542 3.407a2.25 2.25 0 0 0 3.564-1.503l3-15a2.25 2.25 0 0 0-2.302-2.579z"/>
-          </svg>
-        </div>
-        <div class="brand-text">
-          <h1>Telegram Manager</h1>
-          <p>Multi-Account Repository</p>
-        </div>
-      </a>
+<body class="luxury-dashboard">
+  <div class="app-layout">
+    <!-- Backdrop Overlay for Mobile Drawer -->
+    <div class="sidebar-overlay" id="sidebar-overlay"></div>
 
-      <div class="nav-actions">
-        <div class="user-badge" id="user-info">
-          <div class="user-avatar" id="user-avatar">A</div>
-          <span id="username-display">Loading...</span>
-        </div>
-        <button class="btn btn-secondary btn-sm" id="logout-btn" title="Keluar dari Dashboard">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
-            <polyline points="16 17 21 12 16 7"></polyline>
-            <line x1="21" y1="12" x2="9" y2="12"></line>
+    <!-- Luxury Sliding Sidebar -->
+    <aside class="app-sidebar" id="app-sidebar">
+      <!-- Sidebar Header -->
+      <div class="sidebar-header">
+        <a href="/" class="brand-link">
+          <div class="brand-icon-lux">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21.198 2.433a2.242 2.242 0 0 0-1.022.215l-16.5 7.5a2.25 2.25 0 0 0 .126 4.143l4.63 1.543 2.11 6.33a2.25 2.25 0 0 0 4.092.384l2.76-4.14 4.542 3.407a2.25 2.25 0 0 0 3.564-1.503l3-15a2.25 2.25 0 0 0-2.302-2.579z"/>
+            </svg>
+          </div>
+          <div class="brand-info">
+            <span class="brand-name">Telegram Pro</span>
+            <span class="brand-badge-lux">ENTERPRISE</span>
+          </div>
+        </a>
+        <button class="sidebar-close-btn" id="sidebar-close-btn" title="Tutup Menu">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
           </svg>
-          Logout
         </button>
       </div>
-    </header>
 
-    {% if not api_configured %}
-    <div class="alert-banner">
-      <div>
-        ⚠️ <strong>API Credentials Belum Lengkap:</strong> Harap isi <code>API_ID</code> dan <code>API_HASH</code> pada file <code>.env</code> Anda dari <a href="https://my.telegram.org" target="_blank" style="color: inherit; text-decoration: underline;">my.telegram.org</a> untuk mulai menghubungkan akun.
+      <!-- Navigation Groups -->
+      <nav class="sidebar-nav">
+        <div class="nav-section-label">MANAJEMEN UTAMA</div>
+        <button class="nav-item active" data-view="view-accounts" id="nav-btn-accounts">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+            <circle cx="9" cy="7" r="4"></circle>
+            <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+            <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+          </svg>
+          <span class="nav-text">Daftar Akun</span>
+          <span class="nav-badge" id="nav-account-count">0</span>
+        </button>
+
+        <div class="nav-section-label">TAMBAH & LOGIN</div>
+        <button class="nav-item" data-view="view-phone" id="nav-btn-phone">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="5" y="2" width="14" height="20" rx="2" ry="2"></rect>
+            <line x1="12" y1="18" x2="12.01" y2="18"></line>
+          </svg>
+          <span class="nav-text">Login No. HP</span>
+        </button>
+        <button class="nav-item" data-view="view-qr" id="nav-btn-qr">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="3" width="7" height="7"></rect>
+            <rect x="14" y="3" width="7" height="7"></rect>
+            <rect x="14" y="14" width="7" height="7"></rect>
+            <rect x="3" y="14" width="7" height="7"></rect>
+          </svg>
+          <span class="nav-text">Login QR Code</span>
+        </button>
+        <button class="nav-item" data-view="view-bulk" id="nav-btn-bulk">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="8" y1="6" x2="21" y2="6"></line>
+            <line x1="8" y1="12" x2="21" y2="12"></line>
+            <line x1="8" y1="18" x2="21" y2="18"></line>
+            <line x1="3" y1="6" x2="3.01" y2="6"></line>
+            <line x1="3" y1="12" x2="3.01" y2="12"></line>
+            <line x1="3" y1="18" x2="3.01" y2="18"></line>
+          </svg>
+          <span class="nav-text">Bulk No. Telepon</span>
+        </button>
+        <button class="nav-item" data-view="view-import" id="nav-btn-import">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+            <polyline points="7 10 12 15 17 10"></polyline>
+            <line x1="12" y1="15" x2="12" y2="3"></line>
+          </svg>
+          <span class="nav-text">Import StringSession</span>
+        </button>
+
+        <div class="nav-section-label">OTOMASI MASSAL</div>
+        <button class="nav-item" data-view="view-join" id="nav-btn-join">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"></path>
+            <path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"></path>
+          </svg>
+          <span class="nav-text">Join Grup Massal</span>
+        </button>
+        <button class="nav-item" data-view="view-profile" id="nav-btn-profile">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+            <circle cx="12" cy="7" r="4"></circle>
+          </svg>
+          <span class="nav-text">Profil Massal</span>
+        </button>
+        <button class="nav-item" data-view="view-clean" id="nav-btn-clean">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="3 6 5 6 21 6"></polyline>
+            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+          </svg>
+          <span class="nav-text">Bersihkan Chat</span>
+        </button>
+
+        <div class="nav-section-label">AKSI SISTEM & BACKUP</div>
+        <button class="nav-item" id="sidebar-check-health-btn">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+          </svg>
+          <span class="nav-text">Cek Status @SpamBot</span>
+        </button>
+        <button class="nav-item" id="sidebar-export-json-btn">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+            <polyline points="14 2 14 8 20 8"></polyline>
+            <line x1="16" y1="13" x2="8" y2="13"></line>
+            <line x1="16" y1="17" x2="8" y2="17"></line>
+          </svg>
+          <span class="nav-text">Backup Sesi (JSON)</span>
+        </button>
+        <button class="nav-item" id="sidebar-export-txt-btn">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="4 14 10 14 10 20"></polyline>
+            <polyline points="20 10 14 10 14 4"></polyline>
+            <line x1="14" y1="10" x2="21" y2="3"></line>
+            <line x1="3" y1="21" x2="10" y2="14"></line>
+          </svg>
+          <span class="nav-text">Export StringSession (TXT)</span>
+        </button>
+      </nav>
+
+      <!-- Sidebar User Footer -->
+      <div class="sidebar-footer">
+        <div class="user-profile-lux">
+          <div class="user-avatar-lux" id="user-avatar">A</div>
+          <div class="user-meta-lux">
+            <span class="user-name-lux" id="username-display">Admin</span>
+            <span class="user-badge-online">● Online</span>
+          </div>
+          <button class="logout-btn-lux" id="logout-btn" title="Keluar dari Dashboard">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+              <polyline points="16 17 21 12 16 7"></polyline>
+              <line x1="21" y1="12" x2="9" y2="12"></line>
+            </svg>
+          </button>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Workspace -->
+    <div class="app-main">
+      <!-- Top Bar Header -->
+      <header class="app-topbar">
+        <div class="topbar-left">
+          <button class="hamburger-btn" id="hamburger-btn" title="Buka Navigasi">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="3" y1="12" x2="21" y2="12"></line>
+              <line x1="3" y1="6" x2="21" y2="6"></line>
+              <line x1="3" y1="18" x2="21" y2="18"></line>
+            </svg>
+          </button>
+          <div class="topbar-breadcrumbs">
+            <span class="bc-root">Workspace</span>
+            <span class="bc-sep">/</span>
+            <span class="bc-current" id="topbar-view-title">Daftar Akun</span>
+          </div>
+        </div>
+
+        <div class="topbar-right">
+          <div class="gateway-indicator" title="Status Koneksi MTProto">
+            <span class="pulse-dot"></span>
+            <span class="gateway-text">MTProto Online</span>
+          </div>
+          <button class="btn btn-secondary btn-sm" id="refresh-accounts-btn" title="Segarkan Data Akun">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path>
+            </svg>
+            <span class="btn-text-desktop">Refresh</span>
+          </button>
+        </div>
+      </header>
+
+      {% if not api_configured %}
+      <div class="alert-banner-lux">
+        <div>
+          ⚠️ <strong>API Credentials Belum Lengkap:</strong> Harap isi <code>API_ID</code> dan <code>API_HASH</code> pada file <code>.env</code> Anda dari <a href="https://my.telegram.org" target="_blank" style="color: inherit; text-decoration: underline;">my.telegram.org</a> untuk mulai menghubungkan akun.
+        </div>
+      </div>
+      {% endif %}
+
+      <!-- Viewport / Workspace Views -->
+      <div class="app-viewport">
+        <!-- VIEW 1: DAFTAR AKUN -->
+        <div class="view-panel active" id="view-accounts">
+          <div class="view-header-lux">
+            <div>
+              <h2 class="view-heading">Daftar Akun Telegram</h2>
+              <p class="view-subheading">Kelola seluruh session akun, status koneksi, dan kesehatan @SpamBot</p>
+            </div>
+            <div class="view-actions-lux">
+              <span class="badge-count-lux" id="account-count">0 Akun</span>
+              <button class="btn btn-secondary btn-sm" id="check-all-health-btn" title="Cek status @SpamBot untuk semua akun">
+                🛡️ Cek Status Akun
+              </button>
+              <div style="position: relative; display: inline-block;" id="export-dropdown-wrapper">
+                <button class="btn btn-secondary btn-sm" id="export-menu-btn" title="Backup & Export Session">
+                  💾 Export ▾
+                </button>
+                <div id="export-dropdown-menu" style="display: none; position: absolute; right: 0; top: 100%; margin-top: 4px; background: var(--bg-surface-hover); border: 1px solid var(--border-color); border-radius: var(--radius-sm); box-shadow: var(--shadow-card); z-index: 100; min-width: 140px;">
+                  <a href="#" id="export-json-btn" style="display: block; padding: 8px 14px; color: var(--text-primary); text-decoration: none; font-size: 0.8rem; border-bottom: 1px solid var(--border-color);">Backup JSON</a>
+                  <a href="#" id="export-txt-btn" style="display: block; padding: 8px 14px; color: var(--text-primary); text-decoration: none; font-size: 0.8rem;">String TXT</a>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Filter & Search Toolbar -->
+          <div class="accounts-filter-bar">
+            <div class="search-box">
+              <svg class="search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="11" cy="11" r="8"></circle>
+                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+              </svg>
+              <input type="text" id="account-search-input" class="search-input" placeholder="Cari nomor, nama, atau username...">
+              <button class="search-clear-btn" id="search-clear-btn" title="Hapus pencarian" style="display: none;">&times;</button>
+            </div>
+
+            <div class="filter-controls">
+              <select id="account-status-filter" class="filter-select" title="Filter Status">
+                <option value="all">Semua Status</option>
+                <option value="active">Hanya Online</option>
+                <option value="inactive">Hanya Offline</option>
+              </select>
+
+              <select id="account-limit-select" class="filter-select" title="Jumlah Akun per Halaman">
+                <option value="20">20 / hal</option>
+                <option value="50" selected>50 / hal</option>
+                <option value="100">100 / hal</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Accounts Cards Grid -->
+          <div id="accounts-container" class="accounts-grid">
+            <div class="empty-state glass-panel" style="grid-column: 1 / -1;">
+              <div class="spinner" style="margin: 0 auto 16px;"></div>
+              <p>Memuat akun Telegram...</p>
+            </div>
+          </div>
+
+          <!-- Pagination Controls -->
+          <div class="pagination-bar" id="pagination-bar" style="display: none;">
+            <button class="btn btn-secondary btn-sm pagination-btn" id="prev-page-btn" disabled>
+              ← Prev
+            </button>
+            <div class="pagination-info" id="pagination-info">
+              Halaman <span id="current-page-display">1</span> dari <span id="total-pages-display">1</span>
+              <span class="pagination-total" id="pagination-total-text">(Total 0 Akun)</span>
+            </div>
+            <button class="btn btn-secondary btn-sm pagination-btn" id="next-page-btn" disabled>
+              Next →
+            </button>
+          </div>
+        </div>
+
+        <!-- VIEW 2: LOGIN VIA NO HP -->
+        <div class="view-panel" id="view-phone">
+          <div class="tool-card-lux glass-panel">
+            <div class="tool-header-lux">
+              <div class="tool-icon-circle">📱</div>
+              <div>
+                <h3 class="tool-title">Login Akun via Nomor HP</h3>
+                <p class="tool-subtitle">Kirim kode OTP ke aplikasi Telegram atau SMS dengan proteksi 2FA</p>
+              </div>
+            </div>
+
+            <div class="tool-body-lux">
+              <!-- Step 1: Input Phone -->
+              <div id="phone-step-1">
+                <div class="form-group">
+                  <label class="form-label" for="phone-input">Nomor Telepon Telegram (Format Internasional)</label>
+                  <input type="tel" id="phone-input" class="form-input" placeholder="+6281234567890">
+                  <div class="form-help">Contoh: +628123456789 (harus diawali kode negara +)</div>
+                </div>
+                <button class="btn btn-primary" style="width: 100%;" id="send-code-btn">
+                  <span>Kirim Kode Verifikasi</span>
+                  <div class="spinner" id="phone-step-1-spinner" style="display: none;"></div>
+                </button>
+              </div>
+
+              <!-- Step 2: Input OTP -->
+              <div id="phone-step-2" style="display: none;">
+                <div class="form-group">
+                  <label class="form-label" for="otp-input">Kode Verifikasi (OTP)</label>
+                  <input type="text" id="otp-input" class="form-input" placeholder="Masukkan 5 digit kode">
+                  <div class="form-help" id="otp-phone-target">Kode dikirim ke aplikasi Telegram Anda</div>
+                </div>
+                <div style="display: flex; gap: 8px;">
+                  <button class="btn btn-secondary" style="flex: 1;" id="cancel-otp-btn">Batal</button>
+                  <button class="btn btn-primary" style="flex: 2;" id="verify-otp-btn">Verifikasi Kode</button>
+                </div>
+              </div>
+
+              <!-- Step 3: Input 2FA Password -->
+              <div id="phone-step-3" style="display: none;">
+                <div class="form-group">
+                  <label class="form-label" for="twofa-input">Password Two-Step Verification (2FA)</label>
+                  <input type="password" id="twofa-input" class="form-input" placeholder="Masukkan password 2FA">
+                  <div class="form-help">Akun ini memiliki proteksi kata sandi tambahan</div>
+                </div>
+                <div style="display: flex; gap: 8px;">
+                  <button class="btn btn-secondary" style="flex: 1;" id="cancel-2fa-btn">Batal</button>
+                  <button class="btn btn-primary" style="flex: 2;" id="verify-2fa-btn">Konfirmasi Password</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- VIEW 3: LOGIN QR CODE -->
+        <div class="view-panel" id="view-qr">
+          <div class="tool-card-lux glass-panel">
+            <div class="tool-header-lux">
+              <div class="tool-icon-circle">📷</div>
+              <div>
+                <h3 class="tool-title">Login Akun via QR Code</h3>
+                <p class="tool-subtitle">Scan kode QR langsung dari aplikasi Telegram di smartphone Anda</p>
+              </div>
+            </div>
+
+            <div class="tool-body-lux">
+              <div class="qr-container">
+                <div class="qr-box" id="qr-box">
+                  <div class="spinner" id="qr-loader"></div>
+                  <img id="qr-image" class="qr-image" style="display: none;" alt="QR Code Login">
+                </div>
+
+                <div class="qr-countdown" id="qr-timer-text">Menyiapkan QR Code...</div>
+                <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 16px; line-height: 1.5; text-align: center;">
+                  Buka aplikasi Telegram di HP &gt; <strong>Pengaturan</strong> &gt; <strong>Perangkat</strong> &gt; <strong>Hubungkan Perangkat Desktop</strong> lalu arahkan kamera ke QR ini.
+                </p>
+
+                <button class="btn btn-secondary btn-sm" id="refresh-qr-btn">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path>
+                  </svg>
+                  Generate Ulang QR
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- VIEW 4: BULK NO TELEPON -->
+        <div class="view-panel" id="view-bulk">
+          <div class="tool-card-lux glass-panel">
+            <div class="tool-header-lux">
+              <div class="tool-icon-circle">📋</div>
+              <div>
+                <h3 class="tool-title">Bulk Request OTP Banyak Nomor</h3>
+                <p class="tool-subtitle">Otomatis deduplikasi internal & lewati nomor yang sudah ada di dashboard</p>
+              </div>
+            </div>
+
+            <div class="tool-body-lux">
+              <div class="form-group">
+                <label class="form-label" for="bulk-phones">Daftar Nomor Telepon (Satu nomor per baris)</label>
+                <textarea id="bulk-phones" class="form-textarea" rows="6" placeholder="+628123456789&#10;+628987654321&#10;+628555123456"></textarea>
+                <div class="form-help">Sistem otomatis menghapus nomor kembar dan melewati nomor yang sudah terdaftar.</div>
+              </div>
+
+              <button class="btn btn-primary" style="width: 100%;" id="start-bulk-btn">
+                <span>Mulai Request Semua Nomor</span>
+              </button>
+
+              <div id="bulk-results" class="bulk-status-box" style="display: none; margin-top: 16px;"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- VIEW 5: IMPORT STRINGSESSION -->
+        <div class="view-panel" id="view-import">
+          <div class="tool-card-lux glass-panel">
+            <div class="tool-header-lux">
+              <div class="tool-icon-circle">📥</div>
+              <div>
+                <h3 class="tool-title">Import StringSession Telethon</h3>
+                <p class="tool-subtitle">Tempel StringSession untuk langsung menghubungkan akun tanpa OTP / QR</p>
+              </div>
+            </div>
+
+            <div class="tool-body-lux">
+              <div class="form-group">
+                <label class="form-label" for="import-sessions-text">StringSession Telegram (Satu per baris)</label>
+                <textarea id="import-sessions-text" class="form-textarea" rows="6" placeholder="1BJWap1wBu7...&#10;1BJWap2xCu8..."></textarea>
+                <div class="form-help">Jika session milik nomor yang sudah terdaftar, sistem otomatis memperbarui sesi tanpa membuat kartu dobel.</div>
+              </div>
+
+              <button class="btn btn-primary" style="width: 100%;" id="start-import-btn">
+                <span>📥 Mulai Import Sesi</span>
+              </button>
+
+              <div id="import-results" class="bulk-status-box" style="display: none; margin-top: 16px;"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- VIEW 6: JOIN GRUP MASSAL -->
+        <div class="view-panel" id="view-join">
+          <div class="tool-card-lux glass-panel">
+            <div class="tool-header-lux">
+              <div class="tool-icon-circle">🚀</div>
+              <div>
+                <h3 class="tool-title">Join Grup / Channel Massal</h3>
+                <p class="tool-subtitle">Gabungkan seluruh atau sebagian akun Telegram ke grup publik maupun privat</p>
+              </div>
+            </div>
+
+            <div class="tool-body-lux">
+              <div class="form-group">
+                <label class="form-label" for="join-group-link">Tautan atau Username Grup Target</label>
+                <input type="text" id="join-group-link" class="form-input" placeholder="https://t.me/namagrup atau https://t.me/+AbCdEf...">
+                <div class="form-help">Mendukung username publik (@namagrup) maupun tautan privat (+hash).</div>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">Target Akun</label>
+                <div style="display: flex; gap: 16px; margin-bottom: 8px;">
+                  <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                    <input type="radio" name="join-target-mode" value="all" checked id="join-target-all">
+                    <span>Semua Akun</span>
+                  </label>
+                  <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                    <input type="radio" name="join-target-mode" value="selected" id="join-target-selected">
+                    <span>Pilih Akun Tertentu</span>
+                  </label>
+                </div>
+
+                <div id="join-account-checklist" style="display: none; padding: 10px; background: rgba(0,0,0,0.25); border-radius: var(--radius-sm); border: 1px solid var(--border-color);">
+                  <div style="display: flex; gap: 6px; margin-bottom: 8px; align-items: center; flex-wrap: wrap;">
+                    <button type="button" class="btn-pill" id="join-select-all">Pilih Semua</button>
+                    <button type="button" class="btn-pill" id="join-select-none">Batal</button>
+                    <button type="button" class="btn-pill" id="join-select-online">Online Saja</button>
+                    <input type="text" id="join-search-accounts" placeholder="Cari..." style="margin-left: auto; padding: 3px 8px; font-size: 0.75rem; background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); border-radius: var(--radius-sm); color: var(--text-primary); width: 110px;">
+                  </div>
+                  <div id="join-account-items" style="max-height: 150px; overflow-y: auto;"></div>
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label" for="join-delay">Jeda Waktu Antar Akun (Detik)</label>
+                <input type="number" id="join-delay" class="form-input" value="3" min="1" max="60" style="max-width: 140px;">
+                <div class="form-help">Rekomendasi 3 - 5 detik untuk mencegah rate limit Telegram.</div>
+              </div>
+
+              <button class="btn btn-primary" style="width: 100%;" id="start-join-btn">
+                <span>🚀 Jalankan Join Grup</span>
+              </button>
+
+              <div id="join-results" class="bulk-status-box" style="display: none; margin-top: 16px;"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- VIEW 7: PROFIL MASSAL -->
+        <div class="view-panel" id="view-profile">
+          <div class="tool-card-lux glass-panel">
+            <div class="tool-header-lux">
+              <div class="tool-icon-circle">👤</div>
+              <div>
+                <h3 class="tool-title">Profil Manager Massal</h3>
+                <p class="tool-subtitle">Ganti nama, bio deskripsi, dan foto profil avatar ke banyak akun sekaligus</p>
+              </div>
+            </div>
+
+            <div class="tool-body-lux">
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                <div class="form-group">
+                  <label class="form-label" for="profile-firstname">Nama Depan</label>
+                  <input type="text" id="profile-firstname" class="form-input" placeholder="Contoh: Alex">
+                </div>
+                <div class="form-group">
+                  <label class="form-label" for="profile-lastname">Nama Belakang</label>
+                  <input type="text" id="profile-lastname" class="form-input" placeholder="Contoh: Pratama">
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label" for="profile-about">Bio / Deskripsi Akun (Maks 70 karakter)</label>
+                <input type="text" id="profile-about" class="form-input" maxlength="70" placeholder="Contoh: Official Service & Support">
+              </div>
+
+              <div class="form-group">
+                <label class="form-label" for="profile-photo">Foto Profil Baru (Avatar JPG/PNG)</label>
+                <input type="file" id="profile-photo" class="form-input" accept="image/jpeg,image/png,image/jpg" style="padding: 8px;">
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">Target Akun</label>
+                <div style="display: flex; gap: 16px; margin-bottom: 8px;">
+                  <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                    <input type="radio" name="profile-target-mode" value="all" checked id="profile-target-all">
+                    <span>Semua Akun</span>
+                  </label>
+                  <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                    <input type="radio" name="profile-target-mode" value="selected" id="profile-target-selected">
+                    <span>Pilih Akun Tertentu</span>
+                  </label>
+                </div>
+
+                <div id="profile-account-checklist" style="display: none; padding: 10px; background: rgba(0,0,0,0.25); border-radius: var(--radius-sm); border: 1px solid var(--border-color);">
+                  <div style="display: flex; gap: 6px; margin-bottom: 8px; align-items: center; flex-wrap: wrap;">
+                    <button type="button" class="btn-pill" id="profile-select-all">Pilih Semua</button>
+                    <button type="button" class="btn-pill" id="profile-select-none">Batal</button>
+                    <button type="button" class="btn-pill" id="profile-select-online">Online Saja</button>
+                    <input type="text" id="profile-search-accounts" placeholder="Cari..." style="margin-left: auto; padding: 3px 8px; font-size: 0.75rem; background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); border-radius: var(--radius-sm); color: var(--text-primary); width: 110px;">
+                  </div>
+                  <div id="profile-account-items" style="max-height: 150px; overflow-y: auto;"></div>
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label" for="profile-delay">Jeda Waktu Antar Akun (Detik)</label>
+                <input type="number" id="profile-delay" class="form-input" value="3" min="1" max="60" style="max-width: 140px;">
+              </div>
+
+              <button class="btn btn-primary" style="width: 100%;" id="start-profile-btn">
+                <span>👤 Terapkan Profil ke Semua Akun</span>
+              </button>
+
+              <div id="profile-results" class="bulk-status-box" style="display: none; margin-top: 16px;"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- VIEW 8: BERSIHKAN CHAT -->
+        <div class="view-panel" id="view-clean">
+          <div class="tool-card-lux glass-panel">
+            <div class="tool-header-lux">
+              <div class="tool-icon-circle" style="background: linear-gradient(135deg, var(--accent-rose), var(--accent-purple));">🧹</div>
+              <div>
+                <h3 class="tool-title">Bersihkan Chat & Akun (Account Cleaner)</h3>
+                <p class="tool-subtitle">Keluar dari semua grup/channel dan hapus percakapan bot/PM secara massal</p>
+              </div>
+            </div>
+
+            <div class="tool-body-lux">
+              <div class="form-group">
+                <label class="form-label">Filter Kategori Pembersihan</label>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; background: rgba(0,0,0,0.25); padding: 14px; border-radius: var(--radius-sm); border: 1px solid var(--border-color);">
+                  <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                    <input type="checkbox" id="clean-filter-groups" checked>
+                    <span>🚪 Keluar dari Semua Grup</span>
+                  </label>
+                  <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                    <input type="checkbox" id="clean-filter-channels" checked>
+                    <span>📢 Keluar dari Semua Channel</span>
+                  </label>
+                  <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                    <input type="checkbox" id="clean-filter-bots" checked>
+                    <span>🤖 Hapus Percakapan Bot</span>
+                  </label>
+                  <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                    <input type="checkbox" id="clean-filter-pms">
+                    <span>💬 Hapus Chat Pribadi (PM)</span>
+                  </label>
+                </div>
+                <div class="form-help" style="color: var(--accent-amber); margin-top: 8px;">⚠️ Tindakan ini akan meninggalkan grup/channel dan menghapus dialog chat secara permanen.</div>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">Target Akun</label>
+                <div style="display: flex; gap: 16px; margin-bottom: 8px;">
+                  <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                    <input type="radio" name="clean-target-mode" value="all" checked id="clean-target-all">
+                    <span>Semua Akun</span>
+                  </label>
+                  <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                    <input type="radio" name="clean-target-mode" value="selected" id="clean-target-selected">
+                    <span>Pilih Akun Tertentu</span>
+                  </label>
+                </div>
+
+                <div id="clean-account-checklist" style="display: none; padding: 10px; background: rgba(0,0,0,0.25); border-radius: var(--radius-sm); border: 1px solid var(--border-color);">
+                  <div style="display: flex; gap: 6px; margin-bottom: 8px; align-items: center; flex-wrap: wrap;">
+                    <button type="button" class="btn-pill" id="clean-select-all">Pilih Semua</button>
+                    <button type="button" class="btn-pill" id="clean-select-none">Batal</button>
+                    <button type="button" class="btn-pill" id="clean-select-online">Online Saja</button>
+                    <input type="text" id="clean-search-accounts" placeholder="Cari..." style="margin-left: auto; padding: 3px 8px; font-size: 0.75rem; background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); border-radius: var(--radius-sm); color: var(--text-primary); width: 110px;">
+                  </div>
+                  <div id="clean-account-items" style="max-height: 150px; overflow-y: auto;"></div>
+                </div>
+              </div>
+
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                <div class="form-group">
+                  <label class="form-label" for="clean-max-dialogs">Batas Chat Diperiksa</label>
+                  <input type="number" id="clean-max-dialogs" class="form-input" value="100" min="10" max="500">
+                </div>
+                <div class="form-group">
+                  <label class="form-label" for="clean-delay">Jeda Antar Chat (Detik)</label>
+                  <input type="number" id="clean-delay" class="form-input" value="0.8" step="0.1" min="0.2" max="10">
+                </div>
+              </div>
+
+              <button class="btn btn-danger" style="width: 100%;" id="start-clean-btn">
+                <span>🧹 Mulai Pembersihan Chat</span>
+              </button>
+
+              <div id="clean-results" class="bulk-status-box" style="display: none; margin-top: 16px;"></div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
-    {% endif %}
-
-    <!-- Main Content Layout -->
-    <main class="dashboard-grid">
-      <!-- Left Column: Accounts List -->
-      <section class="accounts-section">
-        <div class="section-header">
-          <div class="section-title">
-            <span>Daftar Akun Tersimpan</span>
-            <span class="badge-count" id="account-count">0 Akun</span>
-          </div>
-          <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
-            <button class="btn btn-secondary btn-sm" id="check-all-health-btn" title="Cek status @SpamBot untuk semua akun">
-              🛡️ Cek Status Akun
-            </button>
-            <div style="position: relative; display: inline-block;" id="export-dropdown-wrapper">
-              <button class="btn btn-secondary btn-sm" id="export-menu-btn" title="Backup & Export Session">
-                💾 Export ▾
-              </button>
-              <div id="export-dropdown-menu" style="display: none; position: absolute; right: 0; top: 100%; margin-top: 4px; background: var(--bg-surface-hover); border: 1px solid var(--border-color); border-radius: var(--radius-sm); box-shadow: var(--shadow-card); z-index: 100; min-width: 140px;">
-                <a href="#" id="export-json-btn" style="display: block; padding: 8px 14px; color: var(--text-primary); text-decoration: none; font-size: 0.8rem; border-bottom: 1px solid var(--border-color);">Backup JSON</a>
-                <a href="#" id="export-txt-btn" style="display: block; padding: 8px 14px; color: var(--text-primary); text-decoration: none; font-size: 0.8rem;">String TXT</a>
-              </div>
-            </div>
-            <button class="btn btn-secondary btn-sm" id="refresh-accounts-btn">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
-              </svg>
-              Refresh
-            </button>
-          </div>
-        </div>
-
-        <!-- Filter & Search Toolbar -->
-        <div class="accounts-filter-bar">
-          <div class="search-box">
-            <svg class="search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <circle cx="11" cy="11" r="8"></circle>
-              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-            </svg>
-            <input type="text" id="account-search-input" class="search-input" placeholder="Cari nomor, nama, atau username...">
-            <button class="search-clear-btn" id="search-clear-btn" title="Hapus pencarian" style="display: none;">&times;</button>
-          </div>
-
-          <div class="filter-controls">
-            <select id="account-status-filter" class="filter-select" title="Filter Status">
-              <option value="all">Semua Status</option>
-              <option value="active">Hanya Online</option>
-              <option value="inactive">Hanya Offline</option>
-            </select>
-
-            <select id="account-limit-select" class="filter-select" title="Jumlah Akun per Halaman">
-              <option value="20">20 / hal</option>
-              <option value="50" selected>50 / hal</option>
-              <option value="100">100 / hal</option>
-            </select>
-          </div>
-        </div>
-
-        <div id="accounts-container" class="accounts-grid">
-          <!-- Populated by JavaScript -->
-          <div class="empty-state glass-panel" style="grid-column: 1 / -1;">
-            <div class="spinner" style="margin: 0 auto 16px;"></div>
-            <p>Memuat akun Telegram...</p>
-          </div>
-        </div>
-
-        <!-- Pagination Controls -->
-        <div class="pagination-bar" id="pagination-bar" style="display: none;">
-          <button class="btn btn-secondary btn-sm pagination-btn" id="prev-page-btn" disabled>
-            ← Prev
-          </button>
-          <div class="pagination-info" id="pagination-info">
-            Halaman <span id="current-page-display">1</span> dari <span id="total-pages-display">1</span>
-            <span class="pagination-total" id="pagination-total-text">(Total 0 Akun)</span>
-          </div>
-          <button class="btn btn-secondary btn-sm pagination-btn" id="next-page-btn" disabled>
-            Next →
-          </button>
-        </div>
-      </section>
-
-      <!-- Right Column: Actions & Tools -->
-      <aside class="glass-panel add-account-panel">
-        <div class="section-header">
-          <div class="section-title" style="font-size: 1.15rem;">
-            <span>Aksi & Penambahan Akun</span>
-          </div>
-        </div>
-
-        <!-- Navigation Tabs -->
-        <div class="tab-nav" style="flex-wrap: wrap;">
-          <button class="tab-btn active" data-tab="phone-tab">
-            📱 No. HP
-          </button>
-          <button class="tab-btn" data-tab="qr-tab">
-            📷 QR Code
-          </button>
-          <button class="tab-btn" data-tab="bulk-tab">
-            📋 Bulk No.
-          </button>
-          <button class="tab-btn" data-tab="join-tab">
-            🚀 Join Grup
-          </button>
-          <button class="tab-btn" data-tab="profile-tab">
-            👤 Profil Massal
-          </button>
-          <button class="tab-btn" data-tab="import-tab">
-            📥 Import Sesi
-          </button>
-          <button class="tab-btn" data-tab="clean-tab">
-            🧹 Bersihkan Chat
-          </button>
-        </div>
-
-        <!-- TAB 1: Phone Login -->
-        <div id="phone-tab" class="tab-content active">
-          <!-- Step 1: Input Phone -->
-          <div id="phone-step-1">
-            <div class="form-group">
-              <label class="form-label" for="phone-input">Nomor Telepon Telegram</label>
-              <input type="tel" id="phone-input" class="form-input" placeholder="Contoh: +6281234567890">
-              <div class="form-help">Gunakan format internasional dengan tanda tambah (+)</div>
-            </div>
-            <button class="btn btn-primary" style="width: 100%;" id="send-phone-btn">
-              <span>Kirim Kode Verifikasi</span>
-            </button>
-          </div>
-
-          <!-- Step 2: Input OTP -->
-          <div id="phone-step-2" style="display: none;">
-            <div class="form-group">
-              <label class="form-label">Kode Verifikasi (OTP)</label>
-              <input type="text" id="otp-input" class="form-input" placeholder="Masukkan 5 digit kode">
-              <div class="form-help" id="otp-phone-target">Kode dikirim ke aplikasi Telegram Anda</div>
-            </div>
-            <div style="display: flex; gap: 8px;">
-              <button class="btn btn-secondary" style="flex: 1;" id="cancel-otp-btn">Batal</button>
-              <button class="btn btn-primary" style="flex: 2;" id="verify-otp-btn">Verifikasi Kode</button>
-            </div>
-          </div>
-
-          <!-- Step 3: Input 2FA Password (if enabled) -->
-          <div id="phone-step-3" style="display: none;">
-            <div class="form-group">
-              <label class="form-label">Password Two-Step Verification (2FA)</label>
-              <input type="password" id="twofa-input" class="form-input" placeholder="Masukkan password 2FA">
-              <div class="form-help">Akun ini memiliki proteksi kata sandi tambahan</div>
-            </div>
-            <div style="display: flex; gap: 8px;">
-              <button class="btn btn-secondary" style="flex: 1;" id="cancel-2fa-btn">Batal</button>
-              <button class="btn btn-primary" style="flex: 2;" id="verify-2fa-btn">Konfirmasi Password</button>
-            </div>
-          </div>
-        </div>
-
-        <!-- TAB 2: QR Code Login -->
-        <div id="qr-tab" class="tab-content">
-          <div class="qr-container">
-            <div class="qr-box" id="qr-box">
-              <div class="spinner" id="qr-loader"></div>
-              <img id="qr-image" class="qr-image" style="display: none;" alt="QR Code Login">
-            </div>
-
-            <div class="qr-countdown" id="qr-timer-text">Menyiapkan QR Code...</div>
-            <p style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 16px; line-height: 1.4;">
-              Buka aplikasi Telegram di HP &gt; <strong>Pengaturan</strong> &gt; <strong>Perangkat</strong> &gt; <strong>Hubungkan Perangkat Desktop</strong> lalu arahkan kamera ke QR ini.
-            </p>
-
-            <button class="btn btn-secondary btn-sm" id="refresh-qr-btn">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
-              </svg>
-              Generate Ulang QR
-            </button>
-          </div>
-        </div>
-
-        <!-- TAB 3: Bulk Login -->
-        <div id="bulk-tab" class="tab-content">
-          <div class="form-group">
-            <label class="form-label" for="bulk-phones">Daftar Nomor Telepon (Satu per baris)</label>
-            <textarea id="bulk-phones" class="form-textarea" placeholder="+628123456789&#10;+628987654321&#10;+628555123456"></textarea>
-            <div class="form-help">Sistem akan memproses pengiriman OTP ke semua nomor secara berurutan.</div>
-          </div>
-
-          <button class="btn btn-primary" style="width: 100%;" id="start-bulk-btn">
-            <span>Mulai Request Semua Nomor</span>
-          </button>
-
-          <div id="bulk-results" class="bulk-status-box" style="display: none;"></div>
-        </div>
-
-        <!-- TAB 4: Join Group -->
-        <div id="join-tab" class="tab-content">
-          <div class="form-group">
-            <label class="form-label" for="join-group-link">Tautan atau Username Grup</label>
-            <input type="text" id="join-group-link" class="form-input" placeholder="https://t.me/namagrup atau https://t.me/+AbCdEf...">
-            <div class="form-help">Mendukung username publik (@namagrup) maupun tautan undangan privat (+hash).</div>
-          </div>
-
-          <div class="form-group">
-            <label class="form-label">Target Akun</label>
-            <div style="display: flex; flex-direction: column; gap: 8px; font-size: 0.85rem; color: var(--text-secondary);">
-              <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
-                <input type="radio" name="join-target-mode" value="all" checked id="join-target-all">
-                <span>Semua akun yang tersimpan</span>
-              </label>
-              <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
-                <input type="radio" name="join-target-mode" value="selected" id="join-target-selected">
-                <span>Pilih akun tertentu saja</span>
-              </label>
-            </div>
-            <div id="join-account-checklist" style="display: none; margin-top: 10px; padding: 8px; background: rgba(0,0,0,0.2); border-radius: var(--radius-sm); border: 1px solid var(--border-color);">
-              <div style="display: flex; gap: 6px; margin-bottom: 8px; align-items: center; flex-wrap: wrap;">
-                <button type="button" class="btn-pill" id="join-select-all">Pilih Semua</button>
-                <button type="button" class="btn-pill" id="join-select-none">Batal</button>
-                <button type="button" class="btn-pill" id="join-select-online">Online Saja</button>
-                <input type="text" id="join-search-accounts" placeholder="Cari..." style="margin-left: auto; padding: 2px 8px; font-size: 0.75rem; background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); border-radius: var(--radius-sm); color: var(--text-primary); width: 90px;">
-              </div>
-              <div id="join-account-items" style="max-height: 120px; overflow-y: auto;">
-                <!-- Populated dynamically -->
-              </div>
-            </div>
-          </div>
-
-          <div class="form-group">
-            <label class="form-label" for="join-delay">Jeda Waktu Antar Akun (Detik)</label>
-            <input type="number" id="join-delay" class="form-input" value="3" min="1" max="60" style="width: 100px;">
-            <div class="form-help">Rekomendasi 3 - 5 detik untuk mencegah rate limit Telegram.</div>
-          </div>
-
-          <button class="btn btn-primary" style="width: 100%;" id="start-join-btn">
-            <span>🚀 Jalankan Join Grup</span>
-          </button>
-
-          <div id="join-results" class="bulk-status-box" style="display: none;"></div>
-        </div>
-
-        <!-- TAB 5: Profile Manager Massal -->
-        <div id="profile-tab" class="tab-content">
-          <div class="form-group">
-            <label class="form-label" for="profile-firstname">Nama Depan</label>
-            <input type="text" id="profile-firstname" class="form-input" placeholder="Contoh: Alex (kosongkan jika tidak diubah)">
-          </div>
-
-          <div class="form-group">
-            <label class="form-label" for="profile-lastname">Nama Belakang</label>
-            <input type="text" id="profile-lastname" class="form-input" placeholder="Contoh: Pratama (opsional)">
-          </div>
-
-          <div class="form-group">
-            <label class="form-label" for="profile-about">Bio / Deskripsi Akun (Maks 70 karakter)</label>
-            <input type="text" id="profile-about" class="form-input" maxlength="70" placeholder="Contoh: Official Support & Bot Service">
-            <div class="form-help">Maksimal 70 karakter sesuai batasan Telegram.</div>
-          </div>
-
-          <div class="form-group">
-            <label class="form-label" for="profile-photo">Foto Profil Baru (Avatar)</label>
-            <input type="file" id="profile-photo" class="form-input" accept="image/jpeg,image/png,image/jpg" style="padding: 8px;">
-            <div class="form-help">Format JPG/PNG. Kosongkan jika tidak ingin mengganti foto.</div>
-          </div>
-
-          <div class="form-group">
-            <label class="form-label">Target Akun</label>
-            <div style="display: flex; flex-direction: column; gap: 8px; font-size: 0.85rem; color: var(--text-secondary);">
-              <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
-                <input type="radio" name="profile-target-mode" value="all" checked id="profile-target-all">
-                <span>Semua akun yang tersimpan</span>
-              </label>
-              <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
-                <input type="radio" name="profile-target-mode" value="selected" id="profile-target-selected">
-                <span>Pilih akun tertentu saja</span>
-              </label>
-            </div>
-            <div id="profile-account-checklist" style="display: none; margin-top: 10px; padding: 8px; background: rgba(0,0,0,0.2); border-radius: var(--radius-sm); border: 1px solid var(--border-color);">
-              <div style="display: flex; gap: 6px; margin-bottom: 8px; align-items: center; flex-wrap: wrap;">
-                <button type="button" class="btn-pill" id="profile-select-all">Pilih Semua</button>
-                <button type="button" class="btn-pill" id="profile-select-none">Batal</button>
-                <button type="button" class="btn-pill" id="profile-select-online">Online Saja</button>
-                <input type="text" id="profile-search-accounts" placeholder="Cari..." style="margin-left: auto; padding: 2px 8px; font-size: 0.75rem; background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); border-radius: var(--radius-sm); color: var(--text-primary); width: 90px;">
-              </div>
-              <div id="profile-account-items" style="max-height: 120px; overflow-y: auto;">
-                <!-- Populated dynamically -->
-              </div>
-            </div>
-          </div>
-
-          <div class="form-group">
-            <label class="form-label" for="profile-delay">Jeda Waktu Antar Akun (Detik)</label>
-            <input type="number" id="profile-delay" class="form-input" value="3" min="1" max="60" style="width: 100px;">
-          </div>
-
-          <button class="btn btn-primary" style="width: 100%;" id="start-profile-btn">
-            <span>👤 Terapkan Profil ke Semua Akun</span>
-          </button>
-
-          <div id="profile-results" class="bulk-status-box" style="display: none;"></div>
-        </div>
-
-        <!-- TAB 6: Import StringSession -->
-        <div id="import-tab" class="tab-content">
-          <div class="form-group">
-            <label class="form-label" for="import-sessions-text">StringSession Telegram (Satu per baris)</label>
-            <textarea id="import-sessions-text" class="form-textarea" placeholder="1BJWap1wBu7...&#10;1BJWap2xCu8..."></textarea>
-            <div class="form-help">Tempel StringSession dari Telethon atau generator session lain. Akun akan langsung aktif tanpa scan QR / minta OTP.</div>
-          </div>
-
-          <button class="btn btn-primary" style="width: 100%;" id="start-import-btn">
-            <span>📥 Mulai Import Sesi</span>
-          </button>
-
-          <div id="import-results" class="bulk-status-box" style="display: none;"></div>
-        </div>
-
-        <!-- TAB 7: Bersihkan Chat / Account Cleaner -->
-        <div id="clean-tab" class="tab-content">
-          <div class="form-group">
-            <label class="form-label">Filter Kategori Pembersihan</label>
-            <div style="display: flex; flex-direction: column; gap: 8px; font-size: 0.85rem; color: var(--text-secondary); background: rgba(0,0,0,0.2); padding: 12px; border-radius: var(--radius-sm); border: 1px solid var(--border-color);">
-              <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
-                <input type="checkbox" id="clean-filter-groups" checked>
-                <span>🚪 Keluar dari Semua Grup (Grup & Supergrup)</span>
-              </label>
-              <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
-                <input type="checkbox" id="clean-filter-channels" checked>
-                <span>📢 Keluar dari Semua Channel (Broadcast)</span>
-              </label>
-              <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
-                <input type="checkbox" id="clean-filter-bots" checked>
-                <span>🤖 Hapus Semua Percakapan Bot</span>
-              </label>
-              <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
-                <input type="checkbox" id="clean-filter-pms">
-                <span>💬 Hapus Semua Chat Pribadi (PM / Kontak)</span>
-              </label>
-            </div>
-            <div class="form-help" style="color: var(--accent-amber); margin-top: 6px;">⚠️ Tindakan ini akan meninggalkan grup/channel dan menghapus riwayat chat terpilih secara permanen.</div>
-          </div>
-
-          <div class="form-group">
-            <label class="form-label">Target Akun</label>
-            <div style="display: flex; flex-direction: column; gap: 8px; font-size: 0.85rem; color: var(--text-secondary);">
-              <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
-                <input type="radio" name="clean-target-mode" value="all" checked id="clean-target-all">
-                <span>Semua akun yang tersimpan</span>
-              </label>
-              <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
-                <input type="radio" name="clean-target-mode" value="selected" id="clean-target-selected">
-                <span>Pilih akun tertentu saja</span>
-              </label>
-            </div>
-            <div id="clean-account-checklist" style="display: none; margin-top: 10px; padding: 8px; background: rgba(0,0,0,0.2); border-radius: var(--radius-sm); border: 1px solid var(--border-color);">
-              <div style="display: flex; gap: 6px; margin-bottom: 8px; align-items: center; flex-wrap: wrap;">
-                <button type="button" class="btn-pill" id="clean-select-all">Pilih Semua</button>
-                <button type="button" class="btn-pill" id="clean-select-none">Batal</button>
-                <button type="button" class="btn-pill" id="clean-select-online">Online Saja</button>
-                <input type="text" id="clean-search-accounts" placeholder="Cari..." style="margin-left: auto; padding: 2px 8px; font-size: 0.75rem; background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); border-radius: var(--radius-sm); color: var(--text-primary); width: 90px;">
-              </div>
-              <div id="clean-account-items" style="max-height: 120px; overflow-y: auto;">
-                <!-- Populated dynamically -->
-              </div>
-            </div>
-          </div>
-
-          <div style="display: flex; gap: 12px;">
-            <div class="form-group" style="flex: 1;">
-              <label class="form-label" for="clean-max-dialogs">Batas Chat Diperiksa</label>
-              <input type="number" id="clean-max-dialogs" class="form-input" value="100" min="10" max="500">
-            </div>
-            <div class="form-group" style="flex: 1;">
-              <label class="form-label" for="clean-delay">Jeda Antar Chat (Detik)</label>
-              <input type="number" id="clean-delay" class="form-input" value="0.8" step="0.1" min="0.2" max="10">
-            </div>
-          </div>
-
-          <button class="btn btn-danger" style="width: 100%;" id="start-clean-btn">
-            <span>🧹 Mulai Pembersihan Chat</span>
-          </button>
-
-          <div id="clean-results" class="bulk-status-box" style="display: none;"></div>
-        </div>
-      </aside>
-    </main>
   </div>
 
   <div id="toast-container"></div>
