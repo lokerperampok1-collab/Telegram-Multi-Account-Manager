@@ -48,18 +48,19 @@ app.include_router(telegram.router, prefix="/api/telegram", tags=["Telegram"])
 # Frontend web views
 @app.get("/", response_class=HTMLResponse)
 async def home_page(request: Request):
-    return templates.TemplateResponse("index.html", {
-        "request": request,
-        "api_configured": bool(settings.API_ID and settings.API_HASH)
-    })
+    return templates.TemplateResponse(
+        request=request,
+        name="index.html",
+        context={"api_configured": bool(settings.API_ID and settings.API_HASH)}
+    )
 
 @app.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request):
-    return templates.TemplateResponse("login.html", {"request": request})
+    return templates.TemplateResponse(request=request, name="login.html")
 
 @app.get("/register", response_class=HTMLResponse)
 async def register_page(request: Request):
-    return templates.TemplateResponse("register.html", {"request": request})
+    return templates.TemplateResponse(request=request, name="register.html")
 
 @app.get("/api/health")
 async def health():
