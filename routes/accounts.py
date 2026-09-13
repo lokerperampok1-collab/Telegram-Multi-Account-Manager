@@ -26,6 +26,8 @@ async def list_accounts(
     limit: int = 50,
     search: Optional[str] = None,
     status: Optional[str] = None,
+    id_filter: Optional[str] = None,
+    sort: Optional[str] = "id_desc",
     current_user: dict = Depends(get_current_user)
 ):
     """Retrieves paginated and filtered Telegram accounts owned by current user."""
@@ -34,7 +36,9 @@ async def list_accounts(
         page=page,
         limit=limit,
         search=search,
-        status=status
+        status=status,
+        id_filter=id_filter,
+        sort=sort
     )
     return {
         "status": "success",

@@ -147,7 +147,9 @@ class TelegramAccountModel:
         page: int = 1,
         limit: int = 50,
         search: Optional[str] = None,
-        status: Optional[str] = None
+        status: Optional[str] = None,
+        id_filter: Optional[str] = None,
+        sort: Optional[str] = "id_desc"
     ) -> Dict[str, Any]:
         """Returns paginated and filtered accounts for high scalability (100-1000+ accounts)."""
         async with aiosqlite.connect(settings.DB_PATH) as db:
@@ -158,8 +160,25 @@ class TelegramAccountModel:
 
             if search and search.strip():
                 s = f"%{search.strip()}%"
-                where_clauses.append("(phone_number LIKE ? OR display_name LIKE ? OR username LIKE ?)")
-                params.extend([s, s, s])
+                where_clauses.append("(CAST(id AS TEXT) LIKE ? OR phone_number LIKE ? OR display_name LIKE ? OR username LIKE ?)")
+                params.extend([s, s, s, s])
+
+            if id_filter and id_filter.strip():
+                clean_id = id_filter.strip().lower().replace("#", "")
+                if "-" in clean_id:
+                    # Range filter: e.g. 1-10
+                    parts = clean_id.split("-")
+                    if len(parts) == 2 and parts[0].strip().isdigit() and parts[1].strip().isdigit():
+                        p1, p2 = int(parts[0].strip()), int(parts[1].strip())
+                        where_clauses.append("id >= ? AND id <= ?")
+                        params.extend([min(p1, p2), max(p1, p2)])
+                else:
+                    # Comma-separated or single: e.g. 1, 2, 3 or 1
+                    ids = [int(x.strip()) for x in clean_id.replace(" ", ",").split(",") if x.strip().isdigit()]
+                    if ids:
+                        placeholders = ",".join("?" for _ in ids)
+                        where_clauses.append(f"id IN ({placeholders})")
+                        params.extend(ids)
 
             if status == "active":
                 where_clauses.append("is_active = 1")
@@ -175,11 +194,19 @@ class TelegramAccountModel:
             p = max(1, page)
             l = limit if limit > 0 else (total or 50)
 
+            # Sort order
+            if sort == "id_asc":
+                order_by = "id ASC"
+            elif sort == "id_desc":
+                order_by = "id DESC"
+            else:
+                order_by = "id DESC"
+
             query = f"""
                 SELECT id, user_id, phone_number, display_name, username, telegram_id, is_active, last_connected, added_at
                 FROM telegram_accounts
                 WHERE {where_sql}
-                ORDER BY id DESC
+                ORDER BY {order_by}
             """
             if limit > 0:
                 offset = (p - 1) * l

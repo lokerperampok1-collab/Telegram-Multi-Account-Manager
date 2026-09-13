@@ -829,6 +829,82 @@ body {
   color: var(--text-primary);
 }
 
+/* ID Filter Input Box */
+.id-filter-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-width: 130px;
+}
+
+.id-filter-prefix {
+  position: absolute;
+  left: 10px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--accent-cyan);
+  pointer-events: none;
+}
+
+.filter-input-id {
+  width: 100%;
+  padding: 8px 24px 8px 36px;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.82rem;
+  outline: none;
+  transition: var(--transition);
+}
+
+.filter-input-id:focus {
+  border-color: var(--accent-cyan);
+  box-shadow: 0 0 10px rgba(0, 212, 255, 0.2);
+}
+
+.id-filter-clear-btn {
+  position: absolute;
+  right: 8px;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 1rem;
+  padding: 0 2px;
+  line-height: 1;
+}
+
+.id-filter-clear-btn:hover {
+  color: var(--accent-rose);
+}
+
+/* Account ID Badge on Card Header */
+.account-id-badge {
+  margin-left: auto;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: rgba(0, 212, 255, 0.1);
+  color: var(--accent-cyan);
+  border: 1px solid rgba(0, 212, 255, 0.25);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.account-id-badge:hover {
+  background: var(--accent-cyan);
+  color: #0b0f19;
+  border-color: var(--accent-cyan);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(0, 212, 255, 0.3);
+}
+
 /* Pagination Bar */
 .pagination-bar {
   display: flex;

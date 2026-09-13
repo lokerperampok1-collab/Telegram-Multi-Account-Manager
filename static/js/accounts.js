@@ -5,7 +5,9 @@ let accountPagination = {
   total: 0,
   totalPages: 1,
   search: '',
-  status: 'all'
+  status: 'all',
+  idFilter: '',
+  sort: 'id_desc'
 };
 
 // Account management logic
@@ -25,6 +27,12 @@ async function loadAccounts(targetPage = null) {
     }
     if (accountPagination.status && accountPagination.status !== 'all') {
       url += `&status=${accountPagination.status}`;
+    }
+    if (accountPagination.idFilter) {
+      url += `&id_filter=${encodeURIComponent(accountPagination.idFilter)}`;
+    }
+    if (accountPagination.sort) {
+      url += `&sort=${encodeURIComponent(accountPagination.sort)}`;
     }
 
     const res = await fetch(url, {
@@ -95,11 +103,11 @@ function renderAccounts(accounts) {
   if (!container) return;
 
   if (accounts.length === 0) {
-    if (accountPagination.search || accountPagination.status !== 'all') {
+    if (accountPagination.search || accountPagination.idFilter || accountPagination.status !== 'all') {
       container.innerHTML = `
         <div class="empty-state glass-panel" style="grid-column: 1 / -1;">
           <h3>Tidak Ada Akun yang Cocok</h3>
-          <p>Coba kata kunci pencarian lain atau ubah filter status.</p>
+          <p>Coba kata kunci pencarian lain, ubah filter status, atau periksa filter ID.</p>
         </div>
       `;
       return;
@@ -132,6 +140,7 @@ function renderAccounts(accounts) {
             <h3 title="${acc.display_name || 'User Telegram'}">${acc.display_name || 'User Telegram'}</h3>
             <div class="account-username">${acc.username ? '@' + acc.username : 'Tanpa Username'}</div>
           </div>
+          <span class="account-id-badge" onclick="filterById(${acc.id})" title="ID Akun: #${acc.id} (Klik untuk filter ID ini)">#${acc.id}</span>
         </div>
 
         <div class="account-details">
@@ -418,10 +427,58 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  // ID Filter control
+  const idFilterInput = document.getElementById('account-id-filter');
+  const clearIdFilterBtn = document.getElementById('id-filter-clear-btn');
+  let idDebounceTimer = null;
+
+  if (idFilterInput) {
+    idFilterInput.addEventListener('input', (e) => {
+      const val = e.target.value.trim();
+      if (clearIdFilterBtn) clearIdFilterBtn.style.display = val ? 'block' : 'none';
+      clearTimeout(idDebounceTimer);
+      idDebounceTimer = setTimeout(() => {
+        accountPagination.idFilter = val;
+        accountPagination.page = 1;
+        loadAccounts();
+      }, 300);
+    });
+  }
+
+  if (clearIdFilterBtn && idFilterInput) {
+    clearIdFilterBtn.addEventListener('click', () => {
+      idFilterInput.value = '';
+      clearIdFilterBtn.style.display = 'none';
+      accountPagination.idFilter = '';
+      accountPagination.page = 1;
+      loadAccounts();
+    });
+  }
+
+  // Quick filter function by clicking account ID badge
+  window.filterById = function(id) {
+    if (idFilterInput) {
+      idFilterInput.value = id;
+      if (clearIdFilterBtn) clearIdFilterBtn.style.display = 'block';
+      accountPagination.idFilter = String(id);
+      accountPagination.page = 1;
+      loadAccounts();
+    }
+  };
+
   const statusFilter = document.getElementById('account-status-filter');
   if (statusFilter) {
     statusFilter.addEventListener('change', (e) => {
       accountPagination.status = e.target.value;
+      accountPagination.page = 1;
+      loadAccounts();
+    });
+  }
+
+  const sortSelect = document.getElementById('account-sort-select');
+  if (sortSelect) {
+    sortSelect.addEventListener('change', (e) => {
+      accountPagination.sort = e.target.value;
       accountPagination.page = 1;
       loadAccounts();
     });
