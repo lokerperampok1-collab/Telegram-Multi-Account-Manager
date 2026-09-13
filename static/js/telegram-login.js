@@ -170,6 +170,13 @@ window.startQRFlow = async function() {
   const img = document.getElementById('qr-image');
   const timerText = document.getElementById('qr-timer-text');
   const refreshBtn = document.getElementById('refresh-qr-btn');
+  const box = document.getElementById('qr-box');
+
+  // Remove existing expired overlay if any
+  if (box) {
+    const oldOv = box.querySelector('.qr-box-expired-overlay');
+    if (oldOv) oldOv.remove();
+  }
 
   if (loader) loader.style.display = 'block';
   if (img) img.style.display = 'none';
@@ -198,7 +205,19 @@ window.startQRFlow = async function() {
         updateQRTimerDisplay();
         if (qrTimeLeft <= 0) {
           clearInterval(qrCountdownTimer);
-          if (timerText) timerText.innerHTML = '<span style="color: var(--accent-rose);">QR Code kedaluwarsa. Klik generate ulang.</span>';
+          if (timerText) timerText.innerHTML = '<span style="color: var(--accent-rose);">QR Code kedaluwarsa. Klik untuk buat baru.</span>';
+          
+          if (box && !box.querySelector('.qr-box-expired-overlay')) {
+            const ov = document.createElement('div');
+            ov.className = 'qr-box-expired-overlay';
+            ov.innerHTML = `
+              <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#00d4ff" stroke-width="2.5"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path></svg>
+              <span>QR Kedaluwarsa</span>
+              <small style="color: #94a3b8; font-size: 0.8rem;">Klik untuk refresh QR</small>
+            `;
+            ov.onclick = () => window.startQRFlow();
+            box.appendChild(ov);
+          }
         }
       }, 1000);
 

@@ -51,18 +51,18 @@ class ClientManager:
         return settings.API_ID, settings.API_HASH
 
     def _generate_qr_base64(self, url: str) -> str:
-        """Generates a base64 encoded PNG data URL of the QR code."""
+        """Generates a high-contrast base64 encoded PNG data URL of the QR code for instant smartphone camera scanning."""
         from qrcode.image.pil import PilImage
         qr = qrcode.QRCode(
-            version=1,
             error_correction=qrcode.constants.ERROR_CORRECT_M,
-            box_size=8,
-            border=2,
+            box_size=10,
+            border=4,
             image_factory=PilImage
         )
         qr.add_data(url)
         qr.make(fit=True)
-        img = qr.make_image(fill_color="#00d4ff", back_color="#0f172a")
+        # High contrast black-on-white is standard for optical camera and Telegram QR scanner detection
+        img = qr.make_image(fill_color="#000000", back_color="#ffffff")
         
         buffered = io.BytesIO()
         img.get_image().save(buffered, format="PNG")
