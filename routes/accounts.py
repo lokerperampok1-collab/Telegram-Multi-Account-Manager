@@ -26,18 +26,20 @@ async def list_accounts(
     limit: int = 50,
     search: Optional[str] = None,
     status: Optional[str] = None,
+    telegram_id: Optional[str] = None,
     id_filter: Optional[str] = None,
     sort: Optional[str] = "id_desc",
     current_user: dict = Depends(get_current_user)
 ):
     """Retrieves paginated and filtered Telegram accounts owned by current user."""
+    tg_filter = telegram_id or id_filter
     res = await TelegramAccountModel.list_paginated(
         user_id=current_user["id"],
         page=page,
         limit=limit,
         search=search,
         status=status,
-        id_filter=id_filter,
+        telegram_id_filter=tg_filter,
         sort=sort
     )
     return {

@@ -140,7 +140,7 @@ function renderAccounts(accounts) {
             <h3 title="${acc.display_name || 'User Telegram'}">${acc.display_name || 'User Telegram'}</h3>
             <div class="account-username">${acc.username ? '@' + acc.username : 'Tanpa Username'}</div>
           </div>
-          <span class="account-id-badge" onclick="filterById(${acc.id})" title="ID Akun: #${acc.id} (Klik untuk filter ID ini)">#${acc.id}</span>
+          <span class="account-id-badge" onclick="filterByTelegramId('${acc.telegram_id}')" title="Telegram ID: ${acc.telegram_id || '-'} (Klik untuk cari awalan ini)">TG: ${acc.telegram_id || '-'}</span>
         </div>
 
         <div class="account-details">
@@ -150,7 +150,9 @@ function renderAccounts(accounts) {
           </div>
           <div class="detail-row">
             <span>Telegram ID</span>
-            <span>${acc.telegram_id || '-'}</span>
+            <span class="tg-id-clickable" onclick="filterByTelegramId('${acc.telegram_id}')" title="Klik untuk filter awalan ID ini" style="color: var(--accent-cyan); font-weight: 600; cursor: pointer; font-family: 'JetBrains Mono', monospace;">
+              ${acc.telegram_id || '-'} 🔍
+            </span>
           </div>
           <div class="detail-row">
             <span>Status Sesi</span>
@@ -455,16 +457,18 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // Quick filter function by clicking account ID badge
-  window.filterById = function(id) {
+  // Quick filter function by clicking Telegram ID badge or value
+  window.filterByTelegramId = function(tgId) {
+    if (!tgId || tgId === 'null' || tgId === '-' || tgId === 'undefined') return;
     if (idFilterInput) {
-      idFilterInput.value = id;
+      idFilterInput.value = tgId;
       if (clearIdFilterBtn) clearIdFilterBtn.style.display = 'block';
-      accountPagination.idFilter = String(id);
+      accountPagination.idFilter = String(tgId);
       accountPagination.page = 1;
       loadAccounts();
     }
   };
+  window.filterById = window.filterByTelegramId;
 
   const statusFilter = document.getElementById('account-status-filter');
   if (statusFilter) {

@@ -228,16 +228,16 @@
                 <circle cx="11" cy="11" r="8"></circle>
                 <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
               </svg>
-              <input type="text" id="account-search-input" class="search-input" placeholder="Cari ID, nomor, nama, atau username...">
+              <input type="text" id="account-search-input" class="search-input" placeholder="Cari Telegram ID, nomor, nama, username...">
               <button class="search-clear-btn" id="search-clear-btn" title="Hapus pencarian" style="display: none;">&times;</button>
             </div>
 
             <div class="filter-controls">
-              <!-- Filter by ID -->
-              <div class="id-filter-wrapper" title="Filter berdasarkan ID akun (misal: 1, 2 atau 1-5)">
-                <span class="id-filter-prefix">#ID</span>
-                <input type="text" id="account-id-filter" class="filter-input-id" placeholder="1, 2...">
-                <button class="id-filter-clear-btn" id="id-filter-clear-btn" title="Reset filter ID" style="display: none;">&times;</button>
+              <!-- Filter by Telegram ID Prefix -->
+              <div class="id-filter-wrapper" title="Cari awalan Telegram ID (misal: ketik 62, 78, atau 123...)">
+                <span class="id-filter-prefix">TG ID:</span>
+                <input type="text" id="account-id-filter" class="filter-input-id" placeholder="Awalan ID..." style="min-width: 135px; padding-left: 56px;">
+                <button class="id-filter-clear-btn" id="id-filter-clear-btn" title="Reset filter Telegram ID" style="display: none;">&times;</button>
               </div>
 
               <!-- Filter by Status -->
@@ -249,8 +249,10 @@
 
               <!-- Sort Order -->
               <select id="account-sort-select" class="filter-select" title="Urutan Tampilan">
-                <option value="id_asc">ID Terkecil (1, 2...)</option>
-                <option value="id_desc" selected>ID Terbesar (Terbaru)</option>
+                <option value="id_desc" selected>Terbaru Ditambahkan</option>
+                <option value="tg_id_asc">Telegram ID (Terkecil)</option>
+                <option value="tg_id_desc">Telegram ID (Terbesar)</option>
+                <option value="id_asc">Urutan ID DB (1, 2...)</option>
               </select>
 
               <!-- Pagination Limit -->

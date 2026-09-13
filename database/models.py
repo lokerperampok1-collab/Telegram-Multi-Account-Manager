@@ -148,6 +148,7 @@ class TelegramAccountModel:
         limit: int = 50,
         search: Optional[str] = None,
         status: Optional[str] = None,
+        telegram_id_filter: Optional[str] = None,
         id_filter: Optional[str] = None,
         sort: Optional[str] = "id_desc"
     ) -> Dict[str, Any]:
@@ -159,26 +160,29 @@ class TelegramAccountModel:
             params = [user_id]
 
             if search and search.strip():
-                s = f"%{search.strip()}%"
-                where_clauses.append("(CAST(id AS TEXT) LIKE ? OR phone_number LIKE ? OR display_name LIKE ? OR username LIKE ?)")
-                params.extend([s, s, s, s])
+                clean_s = search.strip()
+                s = f"%{clean_s}%"
+                s_prefix = f"{clean_s}%"
+                # Search matches Telegram ID prefix, phone, name, or username
+                where_clauses.append("(CAST(telegram_id AS TEXT) LIKE ? OR phone_number LIKE ? OR display_name LIKE ? OR username LIKE ?)")
+                params.extend([s_prefix, s, s, s])
 
-            if id_filter and id_filter.strip():
-                clean_id = id_filter.strip().lower().replace("#", "")
-                if "-" in clean_id:
-                    # Range filter: e.g. 1-10
-                    parts = clean_id.split("-")
-                    if len(parts) == 2 and parts[0].strip().isdigit() and parts[1].strip().isdigit():
-                        p1, p2 = int(parts[0].strip()), int(parts[1].strip())
-                        where_clauses.append("id >= ? AND id <= ?")
-                        params.extend([min(p1, p2), max(p1, p2)])
+            # Telegram ID prefix search: e.g. "62", "78", or comma-separated "62, 78"
+            target_tg_filter = telegram_id_filter or id_filter
+            if target_tg_filter and target_tg_filter.strip():
+                clean_tg = target_tg_filter.strip().replace(" ", "").replace("#", "")
+                if "," in clean_tg:
+                    sub_clauses = []
+                    for chunk in clean_tg.split(","):
+                        c = chunk.strip()
+                        if c:
+                            sub_clauses.append("CAST(telegram_id AS TEXT) LIKE ?")
+                            params.append(f"{c}%")
+                    if sub_clauses:
+                        where_clauses.append(f"({' OR '.join(sub_clauses)})")
                 else:
-                    # Comma-separated or single: e.g. 1, 2, 3 or 1
-                    ids = [int(x.strip()) for x in clean_id.replace(" ", ",").split(",") if x.strip().isdigit()]
-                    if ids:
-                        placeholders = ",".join("?" for _ in ids)
-                        where_clauses.append(f"id IN ({placeholders})")
-                        params.extend(ids)
+                    where_clauses.append("CAST(telegram_id AS TEXT) LIKE ?")
+                    params.append(f"{clean_tg}%")
 
             if status == "active":
                 where_clauses.append("is_active = 1")
@@ -195,7 +199,11 @@ class TelegramAccountModel:
             l = limit if limit > 0 else (total or 50)
 
             # Sort order
-            if sort == "id_asc":
+            if sort == "tg_id_asc":
+                order_by = "telegram_id ASC"
+            elif sort == "tg_id_desc":
+                order_by = "telegram_id DESC"
+            elif sort == "id_asc":
                 order_by = "id ASC"
             elif sort == "id_desc":
                 order_by = "id DESC"
