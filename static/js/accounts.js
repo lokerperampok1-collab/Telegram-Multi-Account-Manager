@@ -169,6 +169,9 @@ function renderAccounts(accounts) {
         </div>
 
         <div class="account-actions">
+          <button class="btn btn-secondary btn-sm otp-action-btn" onclick="openOtpModal(${acc.id}, '${escapeHtml(acc.display_name || 'Akun #' + acc.id)}', '${escapeHtml(acc.phone_number || '-')}')" title="Ambil kode masuk / OTP Telegram">
+            🔑 Ambil OTP
+          </button>
           <button class="btn btn-secondary btn-sm" onclick="checkAccountHealth(${acc.id})" title="Cek status @SpamBot">
             🛡️
           </button>
@@ -181,7 +184,7 @@ function renderAccounts(accounts) {
               Hubungkan
             </button>
           `}
-          <button class="btn btn-danger btn-sm" onclick="deleteAccount(${acc.id}, '${acc.display_name || acc.phone_number}')" title="Hapus Akun">
+          <button class="btn btn-danger btn-sm" onclick="deleteAccount(${acc.id}, '${escapeHtml(acc.display_name || acc.phone_number || '')}')" title="Hapus Akun">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <polyline points="3 6 5 6 21 6"></polyline>
               <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
@@ -518,5 +521,210 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  // OTP Modal Close and Controls
+  const otpModalClose = document.getElementById('otp-modal-close');
+  if (otpModalClose) {
+    otpModalClose.addEventListener('click', closeOtpModal);
+  }
+
+  const otpModal = document.getElementById('otp-modal');
+  if (otpModal) {
+    otpModal.addEventListener('click', (e) => {
+      if (e.target === otpModal) closeOtpModal();
+    });
+  }
+
+  const refreshOtpBtn = document.getElementById('refresh-otp-btn');
+  if (refreshOtpBtn) {
+    refreshOtpBtn.addEventListener('click', () => {
+      if (currentOtpAccountId) fetchAccountOtp(currentOtpAccountId, false);
+    });
+  }
+
+  const autoRefreshChk = document.getElementById('otp-auto-refresh-chk');
+  if (autoRefreshChk) {
+    autoRefreshChk.addEventListener('change', (e) => {
+      if (e.target.checked) {
+        startOtpAutoRefresh();
+      } else {
+        stopOtpAutoRefresh();
+      }
+    });
+  }
+
+  const copyOtpBtn = document.getElementById('copy-otp-btn');
+  if (copyOtpBtn) {
+    copyOtpBtn.addEventListener('click', () => {
+      if (currentExtractedOtp) {
+        copySpecificOtp(currentExtractedOtp);
+      } else {
+        showToast('Belum ada kode OTP yang terdeteksi', 'warning');
+      }
+    });
+  }
+
   loadAccounts();
 });
+
+// Helper to escape HTML attributes
+function escapeHtml(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+// ==================== TELEGRAM OTP MODAL CONTROLLER ====================
+let currentOtpAccountId = null;
+let otpPollingTimer = null;
+let currentExtractedOtp = null;
+
+window.openOtpModal = function(accountId, displayName, phoneNumber) {
+  currentOtpAccountId = accountId;
+  currentExtractedOtp = null;
+
+  const modal = document.getElementById('otp-modal');
+  const titleEl = document.getElementById('otp-modal-account-title');
+  const phoneEl = document.getElementById('otp-modal-account-phone');
+  const codeValEl = document.getElementById('otp-code-value');
+  const timeBadgeEl = document.getElementById('otp-time-badge');
+  const historyList = document.getElementById('otp-history-list');
+  const historyCount = document.getElementById('otp-history-count');
+  const copyBtnText = document.getElementById('copy-btn-text');
+
+  if (titleEl) titleEl.textContent = displayName || `Akun #${accountId}`;
+  if (phoneEl) phoneEl.textContent = `Nomor HP: ${phoneNumber || '-'}`;
+  if (codeValEl) codeValEl.textContent = '------';
+  if (timeBadgeEl) timeBadgeEl.innerHTML = '<span class="pulse-dot" style="display:inline-block; margin-right:6px;"></span> Memeriksa pesan Telegram (777000)...';
+  if (historyList) historyList.innerHTML = '<div class="otp-empty-history">Memuat riwayat pesan Telegram...</div>';
+  if (historyCount) historyCount.textContent = '0 pesan';
+  if (copyBtnText) copyBtnText.textContent = 'Salin';
+
+  if (modal) modal.style.display = 'flex';
+
+  // Initial fetch
+  fetchAccountOtp(accountId, false);
+
+  // Start auto-refresh interval
+  startOtpAutoRefresh();
+};
+
+window.closeOtpModal = function() {
+  const modal = document.getElementById('otp-modal');
+  if (modal) modal.style.display = 'none';
+  currentOtpAccountId = null;
+  currentExtractedOtp = null;
+  stopOtpAutoRefresh();
+};
+
+function startOtpAutoRefresh() {
+  stopOtpAutoRefresh();
+  const chk = document.getElementById('otp-auto-refresh-chk');
+  if (!chk || !chk.checked) return;
+
+  otpPollingTimer = setInterval(() => {
+    if (currentOtpAccountId) {
+      fetchAccountOtp(currentOtpAccountId, true);
+    }
+  }, 4000);
+}
+
+function stopOtpAutoRefresh() {
+  if (otpPollingTimer) {
+    clearInterval(otpPollingTimer);
+    otpPollingTimer = null;
+  }
+}
+
+async function fetchAccountOtp(accountId, isAuto = false) {
+  if (!accountId) return;
+
+  const codeValEl = document.getElementById('otp-code-value');
+  const timeBadgeEl = document.getElementById('otp-time-badge');
+  const historyList = document.getElementById('otp-history-list');
+  const historyCount = document.getElementById('otp-history-count');
+  const refreshIcon = document.getElementById('refresh-otp-icon');
+
+  if (!isAuto && refreshIcon) {
+    refreshIcon.style.animation = 'spin 0.8s linear infinite';
+  }
+
+  try {
+    const res = await fetch(`/api/accounts/${accountId}/otp`, {
+      headers: getAuthHeaders()
+    });
+    const data = await res.json();
+
+    if (!isAuto && refreshIcon) {
+      refreshIcon.style.animation = '';
+    }
+
+    if (res.ok && data.status === 'success') {
+      currentExtractedOtp = data.latest_otp;
+
+      if (data.latest_otp) {
+        if (codeValEl) codeValEl.textContent = data.latest_otp;
+        if (timeBadgeEl) {
+          const dateStr = data.latest_otp_time ? new Date(data.latest_otp_time).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : 'Baru saja';
+          timeBadgeEl.innerHTML = `<span style="color: var(--accent-green); font-weight: 600;">● Kode Masuk Ditemukan</span> &bull; Jam: ${dateStr}`;
+        }
+      } else {
+        if (codeValEl) codeValEl.textContent = '------';
+        if (timeBadgeEl) {
+          timeBadgeEl.innerHTML = '<span style="color: var(--accent-amber); font-weight: 600;">○ Menunggu kode masuk...</span> (Kirim kode dari aplikasi Telegram)';
+        }
+      }
+
+      // Render recent messages
+      const msgs = data.messages || [];
+      if (historyCount) historyCount.textContent = `${msgs.length} pesan`;
+
+      if (historyList) {
+        if (msgs.length === 0) {
+          historyList.innerHTML = '<div class="otp-empty-history">Belum ada pesan masuk dari Telegram (777000).</div>';
+        } else {
+          historyList.innerHTML = msgs.map(m => {
+            const timeFormatted = m.date ? new Date(m.date).toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '-';
+            const cleanText = escapeHtml(m.text || '').replace(/\n/g, '<br>');
+            return `
+              <div class="otp-msg-card">
+                <div class="otp-msg-header">
+                  <span class="otp-msg-time">📅 ${timeFormatted}</span>
+                  ${m.otp_code ? `<span class="otp-msg-code-badge" onclick="copySpecificOtp('${m.otp_code}')" title="Klik untuk salin kode">${m.otp_code} 📋</span>` : ''}
+                </div>
+                <div class="otp-msg-text">${cleanText}</div>
+              </div>
+            `;
+          }).join('');
+        }
+      }
+    } else {
+      if (!isAuto) {
+        showToast(data.detail || data.message || 'Gagal mengambil OTP', 'error');
+        if (timeBadgeEl) timeBadgeEl.innerHTML = `<span style="color: var(--accent-rose);">Error: ${escapeHtml(data.detail || data.message || '')}</span>`;
+      }
+    }
+  } catch (err) {
+    if (!isAuto && refreshIcon) refreshIcon.style.animation = '';
+    if (!isAuto) {
+      showToast('Koneksi ke server terputus', 'error');
+    }
+  }
+}
+
+window.copySpecificOtp = function(code) {
+  if (!code) return;
+  navigator.clipboard.writeText(code).then(() => {
+    showToast(`Kode OTP ${code} berhasil disalin!`, 'success');
+    const copyBtnText = document.getElementById('copy-btn-text');
+    if (copyBtnText) {
+      copyBtnText.textContent = '✓ Disalin!';
+      setTimeout(() => { copyBtnText.textContent = 'Salin'; }, 2000);
+    }
+  }).catch(() => {
+    prompt('Salin kode OTP ini:', code);
+  });
+};

@@ -1,4 +1,5 @@
 import io
+import re
 import uuid
 import base64
 import asyncio
@@ -557,6 +558,91 @@ class ClientManager:
             if idx < len(accounts) - 1:
                 await asyncio.sleep(2)
         return results
+
+    # ------------------ Telegram Login OTP Retrieval ------------------
+
+    @staticmethod
+    def _extract_otp_from_text(text: str) -> Optional[str]:
+        """Extracts 5 or 6 digit login code from Telegram Service Notification text."""
+        if not text:
+            return None
+        # Priority 1: explicitly labeled code (Indonesian, English, Russian, Spanish, etc.)
+        m = re.search(r'(?:kode masuk|kode login|login code|confirmation code|verification code|código de inicio de sesión|код подтверждения)[^0-9]*([0-9]{5,6})', text, re.IGNORECASE)
+        if m:
+            return m.group(1)
+        # Priority 2: 5 consecutive digits
+        m5 = re.search(r'(?<!\d)(\d{5})(?!\d)', text)
+        if m5:
+            return m5.group(1)
+        # Priority 3: 6 consecutive digits
+        m6 = re.search(r'(?<!\d)(\d{6})(?!\d)', text)
+        if m6:
+            return m6.group(1)
+        return None
+
+    async def get_account_otp(self, account_id: int, user_id: int, limit: int = 5) -> dict:
+        """Fetches the latest OTP login code and messages from Telegram Service Notifications (777000)."""
+        account = await TelegramAccountModel.get_by_id(account_id, user_id)
+        if not account:
+            return {"status": "error", "message": "Akun tidak ditemukan"}
+
+        # Ensure client is connected
+        client = self._active_clients.get(account_id)
+        if not client or not client.is_connected():
+            connect_res = await self.connect_account(account_id, user_id)
+            if connect_res.get("status") != "success":
+                return {
+                    "status": "error",
+                    "message": f"Gagal menghubungkan sesi akun: {connect_res.get('message', 'Sesi mati / kedaluwarsa')}"
+                }
+            client = self._active_clients.get(account_id)
+
+        try:
+            if not await client.is_user_authorized():
+                await TelegramAccountModel.update_status(account_id, False)
+                return {"status": "error", "message": "Sesi tidak terotorisasi atau sudah kedaluwarsa"}
+
+            # Fetch messages from official Telegram Notifications peer (777000)
+            messages = await client.get_messages(777000, limit=limit)
+            
+            parsed_messages = []
+            latest_otp = None
+            latest_otp_time = None
+            latest_otp_message = None
+
+            for msg in messages:
+                text = msg.text or ""
+                code = self._extract_otp_from_text(text)
+                date_iso = msg.date.isoformat() if msg.date else None
+                
+                parsed_messages.append({
+                    "id": msg.id,
+                    "date": date_iso,
+                    "text": text,
+                    "otp_code": code
+                })
+
+                if not latest_otp and code:
+                    latest_otp = code
+                    latest_otp_time = date_iso
+                    latest_otp_message = text
+
+            return {
+                "status": "success",
+                "account_id": account_id,
+                "phone_number": account.get("phone_number"),
+                "display_name": account.get("display_name"),
+                "latest_otp": latest_otp,
+                "latest_otp_time": latest_otp_time,
+                "latest_otp_message": latest_otp_message,
+                "messages": parsed_messages,
+                "count": len(parsed_messages)
+            }
+        except (UserDeactivatedError, UserDeactivatedBanError, AuthKeyUnregisteredError):
+            await TelegramAccountModel.update_status(account_id, False)
+            return {"status": "error", "message": "Akun Telegram telah dinonaktifkan / di-banned"}
+        except Exception as e:
+            return {"status": "error", "message": f"Gagal mengambil pesan OTP: {str(e)}"}
 
     # ------------------ Session Export & Import ------------------
 

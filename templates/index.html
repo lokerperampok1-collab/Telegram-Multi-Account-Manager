@@ -639,6 +639,72 @@
     </div>
   </div>
 
+  <!-- Modal: Get OTP Telegram -->
+  <div id="otp-modal" class="modal-overlay" style="display: none;">
+    <div class="modal-card glass-panel">
+      <div class="modal-header">
+        <div class="modal-title-wrap">
+          <div class="modal-icon-badge">🔑</div>
+          <div>
+            <h3 class="modal-title" id="otp-modal-account-title">Ambil OTP Telegram</h3>
+            <p class="modal-subtitle" id="otp-modal-account-phone">Nomor: -</p>
+          </div>
+        </div>
+        <button class="modal-close-btn" id="otp-modal-close" title="Tutup Modal">&times;</button>
+      </div>
+
+      <div class="modal-body">
+        <!-- Main OTP Display Card -->
+        <div class="otp-display-card" id="otp-display-card">
+          <div class="otp-status-label" id="otp-status-label">KODE LOGIN TERAKHIR</div>
+          <div class="otp-code-wrap">
+            <span class="otp-code-value" id="otp-code-value">------</span>
+            <button class="btn btn-primary btn-sm copy-otp-btn" id="copy-otp-btn" title="Salin Kode OTP">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+              </svg>
+              <span id="copy-btn-text">Salin</span>
+            </button>
+          </div>
+          <div class="otp-time-badge" id="otp-time-badge">Menghubungkan ke sesi akun...</div>
+        </div>
+
+        <!-- Action Controls -->
+        <div class="otp-action-bar">
+          <button class="btn btn-secondary btn-sm" id="refresh-otp-btn">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" id="refresh-otp-icon">
+              <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path>
+            </svg>
+            <span id="refresh-otp-text">Cek Kode Baru</span>
+          </button>
+          
+          <label class="auto-refresh-toggle" title="Otomatis mengecek kode masuk baru setiap 4 detik">
+            <input type="checkbox" id="otp-auto-refresh-chk" checked>
+            <span class="toggle-slider"></span>
+            <span class="toggle-label-text">Auto-Refresh (4s)</span>
+          </label>
+        </div>
+
+        <!-- Instruction banner -->
+        <div class="otp-instruction-banner">
+          💡 <strong>Cara Pakai:</strong> Buka aplikasi Telegram di HP / Desktop Anda, masukkan nomor akun ini, lalu klik <em>Kirim Kode</em>. Kode OTP yang dikirim Telegram akan otomatis muncul di kotak atas.
+        </div>
+
+        <!-- Notification History Log -->
+        <div class="otp-history-section">
+          <div class="history-section-header">
+            <span>Riwayat Pesan Telegram (777000)</span>
+            <span class="history-count-badge" id="otp-history-count">0 pesan</span>
+          </div>
+          <div class="otp-history-list" id="otp-history-list">
+            <div class="otp-empty-history">Memuat riwayat pesan...</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div id="toast-container"></div>
 
   <!-- Scripts -->

@@ -98,6 +98,16 @@ async def check_all_health(current_user: dict = Depends(get_current_user)):
     results = await client_manager.check_all_accounts_health(current_user["id"])
     return {"status": "success", "results": results}
 
+# ----------------- Telegram Login OTP Retrieval -----------------
+
+@router.get("/{account_id}/otp")
+async def get_account_otp(account_id: int, current_user: dict = Depends(get_current_user)):
+    """Retrieves the latest login OTP code and notifications from Telegram (777000)."""
+    res = await client_manager.get_account_otp(account_id, current_user["id"])
+    if res.get("status") == "error":
+        raise HTTPException(status_code=400, detail=res.get("message"))
+    return res
+
 # ----------------- Export & Import Sessions -----------------
 
 @router.get("/export/json")
