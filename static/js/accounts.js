@@ -691,6 +691,50 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  const copy2faBtn = document.getElementById('copy-2fa-btn');
+  if (copy2faBtn) {
+    copy2faBtn.addEventListener('click', () => {
+      if (currentExtracted2faPass) {
+        navigator.clipboard.writeText(currentExtracted2faPass).then(() => {
+          showToast(`Sandi 2FA "${currentExtracted2faPass}" berhasil disalin!`, 'success');
+          const btnTxt = document.getElementById('copy-2fa-btn-text');
+          if (btnTxt) {
+            btnTxt.textContent = '✓ Disalin!';
+            setTimeout(() => { btnTxt.textContent = 'Salin 2FA'; }, 2000);
+          }
+        }).catch(() => {
+          prompt('Salin sandi 2FA ini:', currentExtracted2faPass);
+        });
+      }
+    });
+  }
+
+  const check2faInlineBtn = document.getElementById('otp-check-2fa-inline-btn');
+  if (check2faInlineBtn) {
+    check2faInlineBtn.addEventListener('click', async () => {
+      if (!currentOtpAccountId) return;
+      const displayEl = document.getElementById('otp-2fa-badge-display');
+      const subtextEl = document.getElementById('otp-2fa-subtext');
+      const copyBtn = document.getElementById('copy-2fa-btn');
+      if (displayEl) displayEl.innerHTML = '<div class="spinner" style="width:12px;height:12px;display:inline-block;"></div> Memeriksa / Reset 2FA...';
+      try {
+        const res = await fetch(`/api/accounts/${currentOtpAccountId}/check-2fa`, {
+          method: 'POST',
+          headers: getAuthHeaders()
+        });
+        const data = await res.json();
+        renderOtpModal2fa(data);
+        showToast(data.message || 'Pemeriksaan 2FA selesai', data.twofa_password ? 'success' : (data.twofa_status === 'reset_pending' ? 'warning' : 'info'));
+        // Also refresh the card badge in the background
+        const cardBadge = document.getElementById(`twofa-badge-${currentOtpAccountId}`);
+        if (cardBadge) cardBadge.innerHTML = get2FaBadgeHtml(data);
+      } catch (err) {
+        if (displayEl) displayEl.innerHTML = '<span style="color: var(--accent-rose);">⚠️ Gagal Cek</span>';
+        showToast('Koneksi server gagal', 'error');
+      }
+    });
+  }
+
   loadAccounts();
 });
 
@@ -709,10 +753,70 @@ function escapeHtml(str) {
 let currentOtpAccountId = null;
 let otpPollingTimer = null;
 let currentExtractedOtp = null;
+let currentExtracted2faPass = null;
+
+function renderOtpModal2fa(twofa) {
+  const displayEl = document.getElementById('otp-2fa-badge-display');
+  const subtextEl = document.getElementById('otp-2fa-subtext');
+  const copyBtn = document.getElementById('copy-2fa-btn');
+  if (!displayEl) return;
+
+  if (!twofa) {
+    displayEl.innerHTML = '<span style="color: var(--text-muted);">Memeriksa 2FA...</span>';
+    if (subtextEl) subtextEl.textContent = '';
+    if (copyBtn) copyBtn.style.display = 'none';
+    currentExtracted2faPass = null;
+    return;
+  }
+
+  if (twofa.twofa_password) {
+    currentExtracted2faPass = twofa.twofa_password;
+    const hintText = twofa.twofa_hint ? ` (Hint: ${escapeHtml(twofa.twofa_hint)})` : '';
+    displayEl.innerHTML = `<span style="color: var(--accent-green); font-weight: 700; font-size: 1.1rem; letter-spacing: 2px;">🔒 Sandi: "${escapeHtml(twofa.twofa_password)}"</span>${hintText ? `<span style="font-size:0.8rem; color:var(--text-muted); margin-left:8px;">${hintText}</span>` : ''}`;
+    if (copyBtn) {
+      copyBtn.style.display = 'inline-flex';
+      const btnTxt = document.getElementById('copy-2fa-btn-text');
+      if (btnTxt) btnTxt.textContent = `Salin (${twofa.twofa_password})`;
+    }
+    if (subtextEl) {
+      subtextEl.innerHTML = '<span style="color: var(--accent-green);">✓ Kata sandi 2FA telah terkonfirmasi cocok. Langsung masukkan sandi ini jika Telegram meminta password setelah kode OTP.</span>';
+    }
+  } else if (twofa.twofa_status === 'reset_pending' || twofa.twofa_reset_until) {
+    currentExtracted2faPass = null;
+    if (copyBtn) copyBtn.style.display = 'none';
+    const until = twofa.twofa_reset_until || '7 hari';
+    displayEl.innerHTML = `<span style="color: var(--accent-amber); font-weight: 600;">⏳ Sedang Proses Reset (7 Hari)</span>`;
+    if (subtextEl) {
+      subtextEl.innerHTML = `<span style="color: var(--accent-amber);">⚠️ Password bukan 0707 atau 7. Reset telah diajukan ke Telegram, proses reset selesai pada: <strong>${escapeHtml(until)}</strong>.</span>`;
+    }
+  } else if (twofa.has_2fa === false || twofa.twofa_status === 'no_2fa') {
+    currentExtracted2faPass = null;
+    if (copyBtn) copyBtn.style.display = 'none';
+    displayEl.innerHTML = `<span style="color: var(--text-muted); font-weight: 600;">🔓 Akun Tidak Menggunakan 2FA</span>`;
+    if (subtextEl) {
+      subtextEl.innerHTML = '<span>Akun ini bebas kata sandi cloud (hanya memerlukan kode OTP untuk login).</span>';
+    }
+  } else if (twofa.has_2fa === true) {
+    currentExtracted2faPass = null;
+    if (copyBtn) copyBtn.style.display = 'none';
+    displayEl.innerHTML = `<span style="color: var(--accent-amber); font-weight: 600;">🔒 2FA Aktif (Sandi Belum Dicek)</span>`;
+    if (subtextEl) {
+      subtextEl.innerHTML = '<span>Klik tombol <strong>🔄 Cek / Reset 2FA</strong> di samping untuk mencocokkan sandi 0707/7 secara otomatis.</span>';
+    }
+  } else {
+    currentExtracted2faPass = null;
+    if (copyBtn) copyBtn.style.display = 'none';
+    displayEl.innerHTML = `<span style="color: var(--text-muted);">Status 2FA belum dicek</span>`;
+    if (subtextEl) {
+      subtextEl.innerHTML = '<span>Klik <strong>🔄 Cek / Reset 2FA</strong> untuk memverifikasi proteksi akun.</span>';
+    }
+  }
+}
 
 window.openOtpModal = function(accountId, displayName, phoneNumber) {
   currentOtpAccountId = accountId;
   currentExtractedOtp = null;
+  currentExtracted2faPass = null;
 
   const modal = document.getElementById('otp-modal');
   const titleEl = document.getElementById('otp-modal-account-title');
@@ -731,6 +835,8 @@ window.openOtpModal = function(accountId, displayName, phoneNumber) {
   if (historyCount) historyCount.textContent = '0 pesan';
   if (copyBtnText) copyBtnText.textContent = 'Salin';
 
+  renderOtpModal2fa(null);
+
   if (modal) modal.style.display = 'flex';
 
   // Initial fetch
@@ -745,6 +851,7 @@ window.closeOtpModal = function() {
   if (modal) modal.style.display = 'none';
   currentOtpAccountId = null;
   currentExtractedOtp = null;
+  currentExtracted2faPass = null;
   stopOtpAutoRefresh();
 };
 
@@ -804,6 +911,11 @@ async function fetchAccountOtp(accountId, isAuto = false) {
         if (timeBadgeEl) {
           timeBadgeEl.innerHTML = '<span style="color: var(--accent-amber); font-weight: 600;">○ Menunggu kode masuk...</span> (Kirim kode dari aplikasi Telegram)';
         }
+      }
+
+      // Render 2FA status inside modal
+      if (data.twofa) {
+        renderOtpModal2fa(data.twofa);
       }
 
       // Render recent messages

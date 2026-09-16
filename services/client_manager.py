@@ -628,6 +628,32 @@ class ClientManager:
                     latest_otp_time = date_iso
                     latest_otp_message = text
 
+            # Check 2FA status if not already checked or if requested
+            raw_has_2fa = account.get("has_2fa")
+            bool_has_2fa = bool(raw_has_2fa) if raw_has_2fa is not None else None
+            twofa_info = {
+                "has_2fa": bool_has_2fa,
+                "twofa_password": account.get("twofa_password"),
+                "twofa_status": account.get("twofa_status"),
+                "twofa_reset_until": account.get("twofa_reset_until"),
+                "twofa_hint": account.get("twofa_hint")
+            }
+
+            # If 2FA status is unknown in DB, run a check automatically
+            if account.get("has_2fa") is None:
+                try:
+                    check_2fa_res = await self.check_account_2fa(account_id, user_id)
+                    if check_2fa_res.get("status") == "success":
+                        twofa_info = {
+                            "has_2fa": check_2fa_res.get("has_2fa"),
+                            "twofa_password": check_2fa_res.get("twofa_password"),
+                            "twofa_status": check_2fa_res.get("twofa_status"),
+                            "twofa_reset_until": check_2fa_res.get("twofa_reset_until"),
+                            "twofa_hint": check_2fa_res.get("hint")
+                        }
+                except Exception:
+                    pass
+
             return {
                 "status": "success",
                 "account_id": account_id,
@@ -636,6 +662,7 @@ class ClientManager:
                 "latest_otp": latest_otp,
                 "latest_otp_time": latest_otp_time,
                 "latest_otp_message": latest_otp_message,
+                "twofa": twofa_info,
                 "messages": parsed_messages,
                 "count": len(parsed_messages)
             }
