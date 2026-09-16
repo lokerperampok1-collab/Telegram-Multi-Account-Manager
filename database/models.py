@@ -191,7 +191,11 @@ class TelegramAccountModel:
                 where_clauses.append("is_active = 0")
 
             # 2FA Filter
-            if twofa_filter == "enabled":
+            if twofa_filter == "matched":
+                where_clauses.append("twofa_password IS NOT NULL")
+            elif twofa_filter == "reset_pending":
+                where_clauses.append("(twofa_status = 'reset_pending' OR twofa_reset_until IS NOT NULL)")
+            elif twofa_filter == "enabled":
                 where_clauses.append("has_2fa = 1")
             elif twofa_filter == "disabled":
                 where_clauses.append("has_2fa = 0")
@@ -220,7 +224,7 @@ class TelegramAccountModel:
                 order_by = "id DESC"
 
             query = f"""
-                SELECT id, user_id, phone_number, display_name, username, telegram_id, is_active, last_connected, added_at, has_2fa, twofa_hint
+                SELECT id, user_id, phone_number, display_name, username, telegram_id, is_active, last_connected, added_at, has_2fa, twofa_hint, twofa_password, twofa_status, twofa_reset_until
                 FROM telegram_accounts
                 WHERE {where_sql}
                 ORDER BY {order_by}
@@ -271,16 +275,23 @@ class TelegramAccountModel:
             await db.commit()
 
     @staticmethod
-    async def update_2fa_status(account_id: int, has_2fa: bool, hint: Optional[str] = None):
-        """Updates the 2FA status and optional password hint for an account."""
+    async def update_2fa_status(
+        account_id: int,
+        has_2fa: bool,
+        hint: Optional[str] = None,
+        twofa_password: Optional[str] = None,
+        twofa_status: Optional[str] = None,
+        twofa_reset_until: Optional[str] = None
+    ):
+        """Updates the 2FA status, password hint, confirmed password, and reset status for an account."""
         async with aiosqlite.connect(settings.DB_PATH) as db:
             await db.execute(
                 """
                 UPDATE telegram_accounts 
-                SET has_2fa = ?, twofa_hint = ? 
+                SET has_2fa = ?, twofa_hint = ?, twofa_password = ?, twofa_status = ?, twofa_reset_until = ?
                 WHERE id = ?
                 """,
-                (1 if has_2fa else 0, hint, account_id)
+                (1 if has_2fa else 0, hint, twofa_password, twofa_status, twofa_reset_until, account_id)
             )
             await db.commit()
 

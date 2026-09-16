@@ -8,11 +8,12 @@ from typing import Dict, Any, Optional
 import qrcode
 from PIL import Image
 
-from telethon import TelegramClient
+from telethon import TelegramClient, password as pwd_mod
 from telethon.sessions import StringSession
 from telethon.tl.functions.channels import JoinChannelRequest
 from telethon.tl.functions.messages import ImportChatInviteRequest
-from telethon.tl.functions.account import UpdateProfileRequest, GetPasswordRequest
+from telethon.tl.functions.account import UpdateProfileRequest, GetPasswordRequest, GetPasswordSettingsRequest, ResetPasswordRequest
+from telethon.tl.types import account as account_types
 from telethon.tl.functions.photos import UploadProfilePhotoRequest
 from telethon.errors import (
     SessionPasswordNeededError,
@@ -671,20 +672,129 @@ class ClientManager:
             has_2fa = bool(pwd.has_password)
             hint = getattr(pwd, 'hint', None)
             has_recovery = getattr(pwd, 'has_recovery', False)
+            pending_reset_date = getattr(pwd, 'pending_reset_date', None)
 
-            # Persist 2FA status to database
-            await TelegramAccountModel.update_2fa_status(account_id, has_2fa, hint)
+            if not has_2fa:
+                await TelegramAccountModel.update_2fa_status(
+                    account_id=account_id,
+                    has_2fa=False,
+                    hint=hint,
+                    twofa_password=None,
+                    twofa_status="no_2fa",
+                    twofa_reset_until=None
+                )
+                return {
+                    "status": "success",
+                    "account_id": account_id,
+                    "phone_number": account.get("phone_number"),
+                    "display_name": account.get("display_name"),
+                    "has_2fa": False,
+                    "twofa_password": None,
+                    "twofa_status": "no_2fa",
+                    "twofa_reset_until": None,
+                    "hint": hint,
+                    "message": "2FA Tidak Aktif (Tanpa Password)"
+                }
 
-            msg = "2FA Aktif (Dilindungi Password)" if has_2fa else "2FA Tidak Aktif (Tanpa Password)"
+            # If 2FA is active, test candidate passwords: "0707" and "7"
+            candidates = ["0707", "7"]
+            matched_pwd = None
+            for cand in candidates:
+                try:
+                    check_srp = pwd_mod.compute_check(pwd, cand)
+                    await client(GetPasswordSettingsRequest(password=check_srp))
+                    matched_pwd = cand
+                    break
+                except PasswordHashInvalidError:
+                    continue
+                except Exception:
+                    pass
+
+            if matched_pwd:
+                await TelegramAccountModel.update_2fa_status(
+                    account_id=account_id,
+                    has_2fa=True,
+                    hint=hint,
+                    twofa_password=matched_pwd,
+                    twofa_status="matched",
+                    twofa_reset_until=None
+                )
+                return {
+                    "status": "success",
+                    "account_id": account_id,
+                    "phone_number": account.get("phone_number"),
+                    "display_name": account.get("display_name"),
+                    "has_2fa": True,
+                    "twofa_password": matched_pwd,
+                    "twofa_status": "matched",
+                    "twofa_reset_until": None,
+                    "hint": hint,
+                    "message": f"2FA Aktif - Password Cocok: '{matched_pwd}'"
+                }
+
+            # Neither "0707" nor "7" matched -> Reset 2FA and wait 7 days
+            reset_until_str = None
+            if pending_reset_date:
+                reset_until_str = pending_reset_date.strftime("%Y-%m-%d %H:%M:%S")
+            else:
+                try:
+                    reset_res = await client(ResetPasswordRequest())
+                    if isinstance(reset_res, account_types.ResetPasswordRequestedWait):
+                        if reset_res.until_date:
+                            reset_until_str = reset_res.until_date.strftime("%Y-%m-%d %H:%M:%S")
+                        else:
+                            reset_until_str = "Menunggu 7 Hari"
+                    elif isinstance(reset_res, account_types.ResetPasswordOk):
+                        await TelegramAccountModel.update_2fa_status(
+                            account_id=account_id,
+                            has_2fa=False,
+                            hint=hint,
+                            twofa_password=None,
+                            twofa_status="no_2fa",
+                            twofa_reset_until=None
+                        )
+                        return {
+                            "status": "success",
+                            "account_id": account_id,
+                            "phone_number": account.get("phone_number"),
+                            "display_name": account.get("display_name"),
+                            "has_2fa": False,
+                            "twofa_password": None,
+                            "twofa_status": "no_2fa",
+                            "twofa_reset_until": None,
+                            "hint": hint,
+                            "message": "Password langsung di-reset oleh Telegram (Tanpa 2FA)."
+                        }
+                    elif isinstance(reset_res, account_types.ResetPasswordFailedWait):
+                        if reset_res.retry_date:
+                            reset_until_str = reset_res.retry_date.strftime("%Y-%m-%d %H:%M:%S")
+                        else:
+                            reset_until_str = "Menunggu 7 Hari"
+                    else:
+                        reset_until_str = "Menunggu 7 Hari"
+                except Exception as e:
+                    reset_until_str = "Menunggu 7 Hari"
+
+            await TelegramAccountModel.update_2fa_status(
+                account_id=account_id,
+                has_2fa=True,
+                hint=hint,
+                twofa_password=None,
+                twofa_status="reset_pending",
+                twofa_reset_until=reset_until_str
+            )
+
             return {
                 "status": "success",
                 "account_id": account_id,
                 "phone_number": account.get("phone_number"),
                 "display_name": account.get("display_name"),
-                "has_2fa": has_2fa,
+                "has_2fa": True,
+                "twofa_password": None,
+                "twofa_status": "reset_pending",
+                "twofa_reset_until": reset_until_str,
                 "hint": hint,
-                "has_recovery": has_recovery,
-                "message": msg
+                "message": f"Password salah (bukan 0707 / 7). 2FA di-reset: Menunggu 7 hari ({reset_until_str})."
             }
         except (UserDeactivatedError, UserDeactivatedBanError, AuthKeyUnregisteredError):
             await TelegramAccountModel.update_status(account_id, False)
@@ -707,6 +817,9 @@ class ClientManager:
                 "name": acc_name,
                 "phone": acc.get("phone_number"),
                 "has_2fa": res.get("has_2fa"),
+                "twofa_password": res.get("twofa_password"),
+                "twofa_status": res.get("twofa_status"),
+                "twofa_reset_until": res.get("twofa_reset_until"),
                 "hint": res.get("hint"),
                 "status": res.get("status"),
                 "message": res.get("message")

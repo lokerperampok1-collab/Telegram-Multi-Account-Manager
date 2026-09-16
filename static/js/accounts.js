@@ -172,8 +172,8 @@ function renderAccounts(accounts) {
           </div>
           <div class="detail-row">
             <span>Status 2FA</span>
-            <span id="twofa-badge-${acc.id}" style="cursor: pointer;" onclick="checkAccount2FA(${acc.id})" title="${acc.twofa_hint ? 'Hint: ' + escapeHtml(acc.twofa_hint) + ' (Klik untuk cek ulang)' : 'Klik untuk cek status 2FA'}">
-              ${acc.has_2fa === 1 || acc.has_2fa === true ? '<span style="color: var(--accent-green); font-weight: 600;">🔒 2FA Aktif</span>' : (acc.has_2fa === 0 || acc.has_2fa === false ? '<span style="color: var(--text-muted);">🔓 Tanpa 2FA</span>' : '<span style="color: var(--accent-cyan); font-weight: 500;">🔍 Cek 2FA</span>')}
+            <span id="twofa-badge-${acc.id}" style="cursor: pointer;" onclick="checkAccount2FA(${acc.id})" title="Klik untuk cek status 2FA">
+              ${get2FaBadgeHtml(acc)}
             </span>
           </div>
         </div>
@@ -347,6 +347,25 @@ async function checkAllAccountsHealth() {
 
 // ----------------- 2FA Checker Logic -----------------
 
+function get2FaBadgeHtml(acc) {
+  if (acc.twofa_status === 'matched' || acc.twofa_password) {
+    const hintStr = acc.twofa_hint ? ` | Hint: ${escapeHtml(acc.twofa_hint)}` : '';
+    return `<span style="color: var(--accent-green); font-weight: 600;" title="Password: ${escapeHtml(acc.twofa_password || '')}${hintStr}">🔒 Pass: "${escapeHtml(acc.twofa_password || '')}"</span>`;
+  }
+  if (acc.twofa_status === 'reset_pending' || acc.twofa_reset_until) {
+    const until = acc.twofa_reset_until || '7 hari';
+    return `<span style="color: var(--accent-amber); font-weight: 600;" title="Password salah (bukan 0707/7). Menunggu reset sampai: ${escapeHtml(until)}">⏳ Reset (7 Hari)</span>`;
+  }
+  if (acc.has_2fa === 1 || acc.has_2fa === true) {
+    const hintStr = acc.twofa_hint ? ` (Hint: ${escapeHtml(acc.twofa_hint)})` : '';
+    return `<span style="color: var(--accent-green); font-weight: 600;" title="2FA Aktif${hintStr}">🔒 2FA Aktif</span>`;
+  }
+  if (acc.has_2fa === 0 || acc.has_2fa === false) {
+    return `<span style="color: var(--text-muted);" title="Tidak menggunakan 2FA">🔓 Tanpa 2FA</span>`;
+  }
+  return `<span style="color: var(--accent-cyan); font-weight: 500;" title="Klik untuk cek status 2FA">🔍 Cek 2FA</span>`;
+}
+
 async function checkAccount2FA(accountId) {
   const badge = document.getElementById(`twofa-badge-${accountId}`);
   if (badge) {
@@ -362,12 +381,7 @@ async function checkAccount2FA(accountId) {
 
     if (badge) {
       if (data.status === 'success') {
-        if (data.has_2fa) {
-          const hintText = data.hint ? ` (Hint: ${escapeHtml(data.hint)})` : '';
-          badge.innerHTML = `<span style="color: var(--accent-green); font-weight: 600;" title="Password Aktif${hintText}">🔒 2FA Aktif</span>`;
-        } else {
-          badge.innerHTML = '<span style="color: var(--text-muted);" title="Tidak menggunakan password">🔓 Tanpa 2FA</span>';
-        }
+        badge.innerHTML = get2FaBadgeHtml(data);
       } else {
         badge.innerHTML = '<span style="color: var(--accent-rose);" title="' + escapeHtml(data.message || 'Gagal cek') + '">⚠️ Gagal</span>';
       }
@@ -375,7 +389,7 @@ async function checkAccount2FA(accountId) {
 
     if (data.status === 'success') {
       const hintMsg = data.hint ? ` | Hint: "${data.hint}"` : '';
-      showToast(`${data.message}${hintMsg}`, data.has_2fa ? 'info' : 'success');
+      showToast(`${data.message}${hintMsg}`, data.twofa_password ? 'success' : (data.twofa_status === 'reset_pending' ? 'warning' : 'info'));
     } else {
       showToast(data.message || data.detail || 'Gagal mengecek 2FA', 'error');
     }
@@ -391,7 +405,7 @@ async function checkAllAccounts2FA() {
     btn.disabled = true;
     btn.innerHTML = '<div class="spinner"></div> Cek 2FA...';
   }
-  showToast('Memulai pengecekan status 2FA untuk semua akun...', 'info');
+  showToast('Memeriksa 2FA (mencocokkan 0707 / 7 dan reset jika salah)...', 'info');
 
   try {
     const res = await fetch('/api/accounts/check-2fa-all', {
@@ -401,26 +415,24 @@ async function checkAllAccounts2FA() {
     const data = await res.json();
 
     if (res.ok && data.results) {
-      let count2fa = 0;
+      let countMatched = 0;
+      let countReset = 0;
       let countNo2fa = 0;
+
       data.results.forEach(r => {
         const badge = document.getElementById(`twofa-badge-${r.account_id}`);
         if (badge) {
           if (r.status === 'success') {
-            if (r.has_2fa) {
-              count2fa++;
-              const hintText = r.hint ? ` (Hint: ${escapeHtml(r.hint)})` : '';
-              badge.innerHTML = `<span style="color: var(--accent-green); font-weight: 600;" title="Password Aktif${hintText}">🔒 2FA Aktif</span>`;
-            } else {
-              countNo2fa++;
-              badge.innerHTML = '<span style="color: var(--text-muted);" title="Tidak menggunakan password">🔓 Tanpa 2FA</span>';
-            }
+            badge.innerHTML = get2FaBadgeHtml(r);
+            if (r.twofa_password) countMatched++;
+            else if (r.twofa_status === 'reset_pending') countReset++;
+            else if (!r.has_2fa) countNo2fa++;
           } else {
             badge.innerHTML = '<span style="color: var(--accent-rose);" title="' + escapeHtml(r.message || 'Gagal cek') + '">⚠️ Gagal</span>';
           }
         }
       });
-      showToast(`Pengecekan selesai (${data.results.length} akun): ${count2fa} ada 2FA, ${countNo2fa} tanpa 2FA`, 'success');
+      showToast(`Pengecekan selesai (${data.results.length} akun): ${countMatched} sandi cocok, ${countReset} reset 7 hari, ${countNo2fa} tanpa 2FA`, 'success');
     } else {
       showToast(data.detail || 'Gagal memeriksa status 2FA', 'error');
     }

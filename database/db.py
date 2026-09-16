@@ -33,13 +33,19 @@ async def init_db():
                 added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 has_2fa BOOLEAN DEFAULT NULL,
                 twofa_hint TEXT DEFAULT NULL,
+                twofa_password TEXT DEFAULT NULL,
+                twofa_status TEXT DEFAULT NULL,
+                twofa_reset_until TEXT DEFAULT NULL,
                 FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
             );
         """)
         # Safe migrations for existing databases
         for col_def in [
             "has_2fa BOOLEAN DEFAULT NULL",
-            "twofa_hint TEXT DEFAULT NULL"
+            "twofa_hint TEXT DEFAULT NULL",
+            "twofa_password TEXT DEFAULT NULL",
+            "twofa_status TEXT DEFAULT NULL",
+            "twofa_reset_until TEXT DEFAULT NULL"
         ]:
             try:
                 await db.execute(f"ALTER TABLE telegram_accounts ADD COLUMN {col_def};")
