@@ -7,6 +7,7 @@ let accountPagination = {
   search: '',
   status: 'all',
   idFilter: '',
+  twofa: 'all',
   sort: 'id_desc'
 };
 
@@ -27,6 +28,9 @@ async function loadAccounts(targetPage = null) {
     }
     if (accountPagination.status && accountPagination.status !== 'all') {
       url += `&status=${accountPagination.status}`;
+    }
+    if (accountPagination.twofa && accountPagination.twofa !== 'all') {
+      url += `&twofa=${encodeURIComponent(accountPagination.twofa)}`;
     }
     if (accountPagination.idFilter) {
       url += `&id_filter=${encodeURIComponent(accountPagination.idFilter)}`;
@@ -166,6 +170,12 @@ function renderAccounts(accounts) {
               🔍 Cek Status
             </span>
           </div>
+          <div class="detail-row">
+            <span>Status 2FA</span>
+            <span id="twofa-badge-${acc.id}" style="cursor: pointer;" onclick="checkAccount2FA(${acc.id})" title="${acc.twofa_hint ? 'Hint: ' + escapeHtml(acc.twofa_hint) + ' (Klik untuk cek ulang)' : 'Klik untuk cek status 2FA'}">
+              ${acc.has_2fa === 1 || acc.has_2fa === true ? '<span style="color: var(--accent-green); font-weight: 600;">🔒 2FA Aktif</span>' : (acc.has_2fa === 0 || acc.has_2fa === false ? '<span style="color: var(--text-muted);">🔓 Tanpa 2FA</span>' : '<span style="color: var(--accent-cyan); font-weight: 500;">🔍 Cek 2FA</span>')}
+            </span>
+          </div>
         </div>
 
         <div class="account-actions">
@@ -174,6 +184,9 @@ function renderAccounts(accounts) {
           </button>
           <button class="btn btn-secondary btn-sm" onclick="checkAccountHealth(${acc.id})" title="Cek status @SpamBot">
             🛡️
+          </button>
+          <button class="btn btn-secondary btn-sm" onclick="checkAccount2FA(${acc.id})" title="Cek status 2FA (Cloud Password)">
+            🔒
           </button>
           ${isOnline ? `
             <button class="btn btn-secondary btn-sm" onclick="disconnectAccount(${acc.id})">
@@ -332,6 +345,95 @@ async function checkAllAccountsHealth() {
   }
 }
 
+// ----------------- 2FA Checker Logic -----------------
+
+async function checkAccount2FA(accountId) {
+  const badge = document.getElementById(`twofa-badge-${accountId}`);
+  if (badge) {
+    badge.innerHTML = '<div class="spinner" style="width: 12px; height: 12px; display: inline-block;"></div> Memeriksa...';
+  }
+
+  try {
+    const res = await fetch(`/api/accounts/${accountId}/check-2fa`, {
+      method: 'POST',
+      headers: getAuthHeaders()
+    });
+    const data = await res.json();
+
+    if (badge) {
+      if (data.status === 'success') {
+        if (data.has_2fa) {
+          const hintText = data.hint ? ` (Hint: ${escapeHtml(data.hint)})` : '';
+          badge.innerHTML = `<span style="color: var(--accent-green); font-weight: 600;" title="Password Aktif${hintText}">🔒 2FA Aktif</span>`;
+        } else {
+          badge.innerHTML = '<span style="color: var(--text-muted);" title="Tidak menggunakan password">🔓 Tanpa 2FA</span>';
+        }
+      } else {
+        badge.innerHTML = '<span style="color: var(--accent-rose);" title="' + escapeHtml(data.message || 'Gagal cek') + '">⚠️ Gagal</span>';
+      }
+    }
+
+    if (data.status === 'success') {
+      const hintMsg = data.hint ? ` | Hint: "${data.hint}"` : '';
+      showToast(`${data.message}${hintMsg}`, data.has_2fa ? 'info' : 'success');
+    } else {
+      showToast(data.message || data.detail || 'Gagal mengecek 2FA', 'error');
+    }
+  } catch (e) {
+    if (badge) badge.innerHTML = '<span style="color: var(--accent-rose);">Gagal</span>';
+    showToast('Koneksi server gagal', 'error');
+  }
+}
+
+async function checkAllAccounts2FA() {
+  const btn = document.getElementById('check-all-2fa-btn');
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<div class="spinner"></div> Cek 2FA...';
+  }
+  showToast('Memulai pengecekan status 2FA untuk semua akun...', 'info');
+
+  try {
+    const res = await fetch('/api/accounts/check-2fa-all', {
+      method: 'POST',
+      headers: getAuthHeaders()
+    });
+    const data = await res.json();
+
+    if (res.ok && data.results) {
+      let count2fa = 0;
+      let countNo2fa = 0;
+      data.results.forEach(r => {
+        const badge = document.getElementById(`twofa-badge-${r.account_id}`);
+        if (badge) {
+          if (r.status === 'success') {
+            if (r.has_2fa) {
+              count2fa++;
+              const hintText = r.hint ? ` (Hint: ${escapeHtml(r.hint)})` : '';
+              badge.innerHTML = `<span style="color: var(--accent-green); font-weight: 600;" title="Password Aktif${hintText}">🔒 2FA Aktif</span>`;
+            } else {
+              countNo2fa++;
+              badge.innerHTML = '<span style="color: var(--text-muted);" title="Tidak menggunakan password">🔓 Tanpa 2FA</span>';
+            }
+          } else {
+            badge.innerHTML = '<span style="color: var(--accent-rose);" title="' + escapeHtml(r.message || 'Gagal cek') + '">⚠️ Gagal</span>';
+          }
+        }
+      });
+      showToast(`Pengecekan selesai (${data.results.length} akun): ${count2fa} ada 2FA, ${countNo2fa} tanpa 2FA`, 'success');
+    } else {
+      showToast(data.detail || 'Gagal memeriksa status 2FA', 'error');
+    }
+  } catch (e) {
+    showToast('Koneksi server gagal', 'error');
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = '🔒 Cek 2FA Semua';
+    }
+  }
+}
+
 // ----------------- Export Sessions Logic -----------------
 
 async function triggerExport(format) {
@@ -371,6 +473,11 @@ document.addEventListener('DOMContentLoaded', () => {
   const checkAllBtn = document.getElementById('check-all-health-btn');
   if (checkAllBtn) {
     checkAllBtn.addEventListener('click', checkAllAccountsHealth);
+  }
+
+  const checkAll2faBtn = document.getElementById('check-all-2fa-btn');
+  if (checkAll2faBtn) {
+    checkAll2faBtn.addEventListener('click', checkAllAccounts2FA);
   }
 
   // Export dropdown handlers
@@ -477,6 +584,15 @@ document.addEventListener('DOMContentLoaded', () => {
   if (statusFilter) {
     statusFilter.addEventListener('change', (e) => {
       accountPagination.status = e.target.value;
+      accountPagination.page = 1;
+      loadAccounts();
+    });
+  }
+
+  const twofaFilter = document.getElementById('account-2fa-filter');
+  if (twofaFilter) {
+    twofaFilter.addEventListener('change', (e) => {
+      accountPagination.twofa = e.target.value;
       accountPagination.page = 1;
       loadAccounts();
     });
@@ -728,3 +844,12 @@ window.copySpecificOtp = function(code) {
     prompt('Salin kode OTP ini:', code);
   });
 };
+
+// Global exports for sidebar and inline event handlers
+window.checkAccount2FA = checkAccount2FA;
+window.checkAllAccounts2FA = checkAllAccounts2FA;
+window.checkAccountHealth = checkAccountHealth;
+window.checkAllAccountsHealth = checkAllAccountsHealth;
+window.triggerExport = triggerExport;
+window.loadAccounts = loadAccounts;
+

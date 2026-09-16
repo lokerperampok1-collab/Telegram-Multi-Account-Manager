@@ -150,6 +150,7 @@ class TelegramAccountModel:
         status: Optional[str] = None,
         telegram_id_filter: Optional[str] = None,
         id_filter: Optional[str] = None,
+        twofa_filter: Optional[str] = None,
         sort: Optional[str] = "id_desc"
     ) -> Dict[str, Any]:
         """Returns paginated and filtered accounts for high scalability (100-1000+ accounts)."""
@@ -189,6 +190,14 @@ class TelegramAccountModel:
             elif status == "inactive":
                 where_clauses.append("is_active = 0")
 
+            # 2FA Filter
+            if twofa_filter == "enabled":
+                where_clauses.append("has_2fa = 1")
+            elif twofa_filter == "disabled":
+                where_clauses.append("has_2fa = 0")
+            elif twofa_filter == "unknown":
+                where_clauses.append("has_2fa IS NULL")
+
             where_sql = " AND ".join(where_clauses)
 
             count_cur = await db.execute(f"SELECT COUNT(*) as count FROM telegram_accounts WHERE {where_sql}", params)
@@ -211,7 +220,7 @@ class TelegramAccountModel:
                 order_by = "id DESC"
 
             query = f"""
-                SELECT id, user_id, phone_number, display_name, username, telegram_id, is_active, last_connected, added_at
+                SELECT id, user_id, phone_number, display_name, username, telegram_id, is_active, last_connected, added_at, has_2fa, twofa_hint
                 FROM telegram_accounts
                 WHERE {where_sql}
                 ORDER BY {order_by}
@@ -258,6 +267,20 @@ class TelegramAccountModel:
                 WHERE id = ?
                 """,
                 (1 if is_active else 0, account_id)
+            )
+            await db.commit()
+
+    @staticmethod
+    async def update_2fa_status(account_id: int, has_2fa: bool, hint: Optional[str] = None):
+        """Updates the 2FA status and optional password hint for an account."""
+        async with aiosqlite.connect(settings.DB_PATH) as db:
+            await db.execute(
+                """
+                UPDATE telegram_accounts 
+                SET has_2fa = ?, twofa_hint = ? 
+                WHERE id = ?
+                """,
+                (1 if has_2fa else 0, hint, account_id)
             )
             await db.commit()
 

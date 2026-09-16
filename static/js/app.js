@@ -139,6 +139,15 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     }
 
+    const sideCheck2faBtn = document.getElementById('sidebar-check-2fa-btn');
+    if (sideCheck2faBtn) {
+      sideCheck2faBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        closeSidebar();
+        if (window.checkAllAccounts2FA) window.checkAllAccounts2FA();
+      });
+    }
+
     const sideExportJsonBtn = document.getElementById('sidebar-export-json-btn');
     if (sideExportJsonBtn) {
       sideExportJsonBtn.addEventListener('click', (e) => {

@@ -28,6 +28,7 @@ async def list_accounts(
     status: Optional[str] = None,
     telegram_id: Optional[str] = None,
     id_filter: Optional[str] = None,
+    twofa: Optional[str] = None,
     sort: Optional[str] = "id_desc",
     current_user: dict = Depends(get_current_user)
 ):
@@ -40,6 +41,7 @@ async def list_accounts(
         search=search,
         status=status,
         telegram_id_filter=tg_filter,
+        twofa_filter=twofa,
         sort=sort
     )
     return {
@@ -96,6 +98,20 @@ async def check_single_health(account_id: int, current_user: dict = Depends(get_
 async def check_all_health(current_user: dict = Depends(get_current_user)):
     """Queries @SpamBot for all user accounts sequentially."""
     results = await client_manager.check_all_accounts_health(current_user["id"])
+    return {"status": "success", "results": results}
+
+# ----------------- 2FA Check (Two-Step Verification) -----------------
+
+@router.post("/{account_id}/check-2fa")
+async def check_account_2fa(account_id: int, current_user: dict = Depends(get_current_user)):
+    """Checks Two-Step Verification (2FA / Cloud Password) status for a single account."""
+    res = await client_manager.check_account_2fa(account_id, current_user["id"])
+    return res
+
+@router.post("/check-2fa-all")
+async def check_all_2fa(current_user: dict = Depends(get_current_user)):
+    """Checks Two-Step Verification (2FA) for all user accounts sequentially."""
+    results = await client_manager.check_all_accounts_2fa(current_user["id"])
     return {"status": "success", "results": results}
 
 # ----------------- Telegram Login OTP Retrieval -----------------

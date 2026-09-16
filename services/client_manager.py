@@ -12,7 +12,7 @@ from telethon import TelegramClient
 from telethon.sessions import StringSession
 from telethon.tl.functions.channels import JoinChannelRequest
 from telethon.tl.functions.messages import ImportChatInviteRequest
-from telethon.tl.functions.account import UpdateProfileRequest
+from telethon.tl.functions.account import UpdateProfileRequest, GetPasswordRequest
 from telethon.tl.functions.photos import UploadProfilePhotoRequest
 from telethon.errors import (
     SessionPasswordNeededError,
@@ -643,6 +643,77 @@ class ClientManager:
             return {"status": "error", "message": "Akun Telegram telah dinonaktifkan / di-banned"}
         except Exception as e:
             return {"status": "error", "message": f"Gagal mengambil pesan OTP: {str(e)}"}
+
+    # ------------------ 2FA Status Checker ------------------
+
+    async def check_account_2fa(self, account_id: int, user_id: int) -> dict:
+        """Queries Telegram to check if Two-Step Verification (2FA) is enabled and retrieves hint."""
+        account = await TelegramAccountModel.get_by_id(account_id, user_id)
+        if not account:
+            return {"status": "error", "message": "Akun tidak ditemukan"}
+
+        client = self._active_clients.get(account_id)
+        if not client or not client.is_connected():
+            connect_res = await self.connect_account(account_id, user_id)
+            if connect_res.get("status") != "success":
+                return {
+                    "status": "error",
+                    "message": f"Gagal menghubungkan sesi akun: {connect_res.get('message', 'Sesi mati / kedaluwarsa')}"
+                }
+            client = self._active_clients.get(account_id)
+
+        try:
+            if not await client.is_user_authorized():
+                await TelegramAccountModel.update_status(account_id, False)
+                return {"status": "error", "message": "Sesi tidak terotorisasi atau sudah kedaluwarsa"}
+
+            pwd = await client(GetPasswordRequest())
+            has_2fa = bool(pwd.has_password)
+            hint = getattr(pwd, 'hint', None)
+            has_recovery = getattr(pwd, 'has_recovery', False)
+
+            # Persist 2FA status to database
+            await TelegramAccountModel.update_2fa_status(account_id, has_2fa, hint)
+
+            msg = "2FA Aktif (Dilindungi Password)" if has_2fa else "2FA Tidak Aktif (Tanpa Password)"
+            return {
+                "status": "success",
+                "account_id": account_id,
+                "phone_number": account.get("phone_number"),
+                "display_name": account.get("display_name"),
+                "has_2fa": has_2fa,
+                "hint": hint,
+                "has_recovery": has_recovery,
+                "message": msg
+            }
+        except (UserDeactivatedError, UserDeactivatedBanError, AuthKeyUnregisteredError):
+            await TelegramAccountModel.update_status(account_id, False)
+            return {"status": "error", "message": "Akun Telegram telah dinonaktifkan / di-banned"}
+        except FloodWaitError as e:
+            return {"status": "error", "message": f"Terkena FloodWait Telegram, tunggu {e.seconds} detik."}
+        except Exception as e:
+            return {"status": "error", "message": f"Gagal mengecek status 2FA: {str(e)}"}
+
+    async def check_all_accounts_2fa(self, user_id: int) -> list[dict]:
+        """Runs 2FA check on all user accounts sequentially."""
+        accounts = await TelegramAccountModel.list_by_user(user_id)
+        results = []
+        for idx, acc in enumerate(accounts):
+            acc_id = acc["id"]
+            acc_name = acc.get("display_name") or acc.get("phone_number") or f"Akun #{acc_id}"
+            res = await self.check_account_2fa(acc_id, user_id)
+            results.append({
+                "account_id": acc_id,
+                "name": acc_name,
+                "phone": acc.get("phone_number"),
+                "has_2fa": res.get("has_2fa"),
+                "hint": res.get("hint"),
+                "status": res.get("status"),
+                "message": res.get("message")
+            })
+            if idx < len(accounts) - 1:
+                await asyncio.sleep(1)
+        return results
 
     # ------------------ Session Export & Import ------------------
 
