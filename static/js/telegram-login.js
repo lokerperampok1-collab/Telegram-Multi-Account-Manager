@@ -986,4 +986,259 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     });
   }
+
+  // ------------------ KIRIM CHAT GRUP MASSAL CONTROLLER ------------------
+  const sendmsgGroupLink = document.getElementById('sendmsg-group-link');
+  const sendmsgTextarea = document.getElementById('sendmsg-text-variations');
+  const sendmsgCountSpan = document.getElementById('sendmsg-variation-count');
+  const sendmsgDistMode = document.getElementById('sendmsg-distribution-mode');
+  const sendmsgAutoJoin = document.getElementById('sendmsg-auto-join');
+  const sendmsgDelay = document.getElementById('sendmsg-delay');
+  const sendmsgRadioAll = document.getElementById('sendmsg-target-all');
+  const sendmsgRadioSelected = document.getElementById('sendmsg-target-selected');
+  const sendmsgChecklistContainer = document.getElementById('sendmsg-account-checklist');
+  const sendmsgItemsContainer = document.getElementById('sendmsg-account-items');
+  const sendmsgSelectAll = document.getElementById('sendmsg-select-all');
+  const sendmsgSelectNone = document.getElementById('sendmsg-select-none');
+  const sendmsgSelectOnline = document.getElementById('sendmsg-select-online');
+  const sendmsgSearchAccounts = document.getElementById('sendmsg-search-accounts');
+  const startSendmsgBtn = document.getElementById('start-sendmsg-btn');
+  const sendmsgResults = document.getElementById('sendmsg-results');
+
+  const presetGreetingsBtn = document.getElementById('preset-greetings-btn');
+  const presetQuestionsBtn = document.getElementById('preset-questions-btn');
+  const presetClearBtn = document.getElementById('preset-clear-btn');
+
+  let cachedSendmsgAccounts = [];
+
+  const GREETINGS_PRESET = [
+    "Halo semua, izin gabung ya",
+    "Siang agan2, salam kenal semuanya",
+    "Halo halo, ada yang lagi online kah?",
+    "Izin nyimak dulu suhu-suhu disini",
+    "Halo min, salam kenal dari member baru",
+    "Tes tes, salam kenal agan semua",
+    "Halo guys, rame juga ya grupnya",
+    "Izin gabung ya gaes, salam kenal semuanya",
+    "Pagi/siang semuanya, izin stay di grup ya",
+    "Halo gan, baru join nih. Salam kenal",
+    "Siap meramaikan, salam kenal semuanya",
+    "Salam kenal kawan-kawan semua, mohon bimbingannya",
+    "Halo bro, salam kenal ya",
+    "Mantap grupnya, izin nyimak obrolannya ya",
+    "Halo semuanya, selamat beraktivitas ya"
+  ];
+
+  const QUESTIONS_PRESET = [
+    "Halo, mau tanya disini bahas topik apa aja ya?",
+    "Siang gan, info admin aktif siapa ya?",
+    "Izin tanya suhu, ada rules khusus ga di grup ini?",
+    "Halo semuanya, ada grup diskusi tambahannya ga ya?",
+    "Permisi agan-agan, ada info menarik hari ini?",
+    "Izin nyimak dan belajar ya gan",
+    "Siang min, salam kenal dari pendatang baru",
+    "Halo bro, grup ini aktif dari jam berapa biasanya?",
+    "Izin gabung om, semoga bisa nambah wawasan disini",
+    "Halo gan, salam sukses buat semua member disini"
+  ];
+
+  function updateVariationCount() {
+    if (!sendmsgTextarea || !sendmsgCountSpan) return;
+    const lines = sendmsgTextarea.value.split('\n').map(l => l.trim()).filter(Boolean);
+    sendmsgCountSpan.textContent = `${lines.length} variasi pesan`;
+  }
+
+  if (sendmsgTextarea) {
+    sendmsgTextarea.addEventListener('input', updateVariationCount);
+    updateVariationCount();
+  }
+
+  if (presetGreetingsBtn && sendmsgTextarea) {
+    presetGreetingsBtn.addEventListener('click', () => {
+      sendmsgTextarea.value = GREETINGS_PRESET.join('\n');
+      updateVariationCount();
+      showToast('Template sapaan alami dimuat (15 variasi)', 'info');
+    });
+  }
+
+  if (presetQuestionsBtn && sendmsgTextarea) {
+    presetQuestionsBtn.addEventListener('click', () => {
+      sendmsgTextarea.value = QUESTIONS_PRESET.join('\n');
+      updateVariationCount();
+      showToast('Template obrolan santai dimuat (10 variasi)', 'info');
+    });
+  }
+
+  if (presetClearBtn && sendmsgTextarea) {
+    presetClearBtn.addEventListener('click', () => {
+      sendmsgTextarea.value = '';
+      updateVariationCount();
+    });
+  }
+
+  function renderSendmsgChecklist(accounts) {
+    if (!sendmsgItemsContainer) return;
+    if (accounts.length === 0) {
+      sendmsgItemsContainer.innerHTML = '<div style="color: var(--text-muted); font-size: 0.8rem; padding: 4px;">Tidak ada akun yang sesuai</div>';
+      return;
+    }
+
+    sendmsgItemsContainer.innerHTML = accounts.map(acc => {
+      const name = acc.display_name || acc.username || acc.phone_number || `Akun #${acc.id}`;
+      const isOnline = acc.is_active;
+      return `
+        <label style="display: flex; align-items: center; gap: 8px; font-size: 0.8rem; margin-bottom: 4px; cursor: pointer;">
+          <input type="checkbox" class="sendmsg-acc-checkbox" value="${acc.id}" data-online="${isOnline ? '1' : '0'}">
+          <span>${name} (${acc.phone_number || 'Tanpa no.'}) ${isOnline ? '<span style="color: var(--accent-green);">●</span>' : '<span style="color: var(--text-muted);">○</span>'}</span>
+        </label>
+      `;
+    }).join('');
+  }
+
+  async function populateSendmsgChecklist() {
+    if (!sendmsgItemsContainer) return;
+    try {
+      const res = await fetch('/api/accounts?limit=0', { headers: getAuthHeaders() });
+      const data = await res.json();
+      cachedSendmsgAccounts = data.accounts || [];
+      renderSendmsgChecklist(cachedSendmsgAccounts);
+    } catch (e) {
+      sendmsgItemsContainer.innerHTML = '<div style="color: var(--accent-rose); font-size: 0.8rem;">Gagal memuat daftar akun</div>';
+    }
+  }
+
+  if (sendmsgSelectAll) {
+    sendmsgSelectAll.addEventListener('click', () => {
+      document.querySelectorAll('.sendmsg-acc-checkbox').forEach(cb => cb.checked = true);
+    });
+  }
+  if (sendmsgSelectNone) {
+    sendmsgSelectNone.addEventListener('click', () => {
+      document.querySelectorAll('.sendmsg-acc-checkbox').forEach(cb => cb.checked = false);
+    });
+  }
+  if (sendmsgSelectOnline) {
+    sendmsgSelectOnline.addEventListener('click', () => {
+      document.querySelectorAll('.sendmsg-acc-checkbox').forEach(cb => {
+        cb.checked = cb.getAttribute('data-online') === '1';
+      });
+    });
+  }
+  if (sendmsgSearchAccounts) {
+    sendmsgSearchAccounts.addEventListener('input', (e) => {
+      const q = e.target.value.toLowerCase().trim();
+      const filtered = cachedSendmsgAccounts.filter(acc => {
+        const name = (acc.display_name || '').toLowerCase();
+        const user = (acc.username || '').toLowerCase();
+        const phone = (acc.phone_number || '').toLowerCase();
+        return name.includes(q) || user.includes(q) || phone.includes(q);
+      });
+      renderSendmsgChecklist(filtered);
+    });
+  }
+
+  if (sendmsgRadioAll && sendmsgRadioSelected && sendmsgChecklistContainer) {
+    sendmsgRadioAll.addEventListener('change', () => {
+      sendmsgChecklistContainer.style.display = 'none';
+    });
+
+    sendmsgRadioSelected.addEventListener('change', () => {
+      sendmsgChecklistContainer.style.display = 'block';
+      populateSendmsgChecklist();
+    });
+  }
+
+  if (startSendmsgBtn && sendmsgGroupLink && sendmsgTextarea && sendmsgResults) {
+    startSendmsgBtn.addEventListener('click', async () => {
+      const link = sendmsgGroupLink.value.trim();
+      if (!link) {
+        showToast('Masukkan link atau username grup Telegram', 'error');
+        sendmsgGroupLink.focus();
+        return;
+      }
+
+      const rawText = sendmsgTextarea.value.trim();
+      const variations = rawText.split('\n').map(l => l.trim()).filter(Boolean);
+      if (variations.length === 0) {
+        showToast('Masukkan minimal satu variasi pesan', 'error');
+        sendmsgTextarea.focus();
+        return;
+      }
+
+      let targetIds = null;
+      if (sendmsgRadioSelected && sendmsgRadioSelected.checked) {
+        const checked = Array.from(document.querySelectorAll('.sendmsg-acc-checkbox:checked')).map(cb => parseInt(cb.value));
+        if (checked.length === 0) {
+          showToast('Pilih minimal satu akun pada daftar pilihan', 'warning');
+          return;
+        }
+        targetIds = checked;
+      }
+
+      const delaySec = parseInt(sendmsgDelay.value) || 5;
+      const distMode = sendmsgDistMode ? sendmsgDistMode.value : 'random';
+      const autoJoin = sendmsgAutoJoin ? sendmsgAutoJoin.checked : true;
+
+      startSendmsgBtn.disabled = true;
+      startSendmsgBtn.innerHTML = '<div class="spinner"></div> Mengirim pesan massal...';
+      sendmsgResults.style.display = 'flex';
+      sendmsgResults.innerHTML = '<div style="color: var(--text-secondary); padding: 8px;">Menginisialisasi pengiriman pesan ke grup...</div>';
+
+      try {
+        const res = await fetch('/api/accounts/send-group-message', {
+          method: 'POST',
+          headers: getAuthHeaders(),
+          body: JSON.stringify({
+            group_link: link,
+            messages: variations,
+            distribution_mode: distMode,
+            auto_join: autoJoin,
+            account_ids: targetIds,
+            delay_seconds: delaySec
+          })
+        });
+
+        const data = await res.json();
+        if (res.ok && data.results) {
+          const successCount = data.results.filter(r => r.status === 'success').length;
+          const failCount = data.results.length - successCount;
+
+          let summaryHtml = `
+            <div style="margin-bottom: 10px; padding: 8px 12px; background: rgba(0,0,0,0.3); border-radius: var(--radius-sm); display: flex; justify-content: space-between; font-size: 0.85rem;">
+              <span>Total: <strong>${data.results.length}</strong> Akun</span>
+              <span style="color: var(--accent-green);">✓ Sukses: <strong>${successCount}</strong></span>
+              <span style="color: var(--accent-rose);">❌ Gagal: <strong>${failCount}</strong></span>
+            </div>
+          `;
+
+          sendmsgResults.innerHTML = summaryHtml + data.results.map(r => {
+            const isOk = r.status === 'success';
+            return `
+              <div class="bulk-item">
+                <div style="flex: 1; min-width: 0;">
+                  <span class="bulk-item-phone">${r.name || 'Akun'} (${r.phone || '-'})</span>
+                  <div style="font-size: 0.78rem; color: var(--accent-cyan); margin: 2px 0;">"${escapeHtml(r.text || '')}"</div>
+                  <div style="font-size: 0.72rem; color: var(--text-muted);">${r.message}</div>
+                </div>
+                <div>
+                  <span class="badge-status ${isOk ? 'success' : 'error'}">${isOk ? 'Terkirim' : 'Gagal'}</span>
+                </div>
+              </div>
+            `;
+          }).join('');
+
+          showToast(`Kirim chat selesai: ${successCount} berhasil, ${failCount} gagal`, successCount > 0 ? 'success' : 'warning');
+        } else {
+          sendmsgResults.innerHTML = `<div style="color: var(--accent-rose); padding: 8px;">${data.detail || 'Gagal mengirim pesan'}</div>`;
+          showToast(data.detail || 'Gagal mengirim pesan', 'error');
+        }
+      } catch (err) {
+        showToast('Koneksi server terputus', 'error');
+        sendmsgResults.innerHTML = '<div style="color: var(--accent-rose); padding: 8px;">Koneksi server gagal.</div>';
+      } finally {
+        startSendmsgBtn.disabled = false;
+        startSendmsgBtn.innerHTML = '<span>💬 Mulai Kirim Pesan Massal</span>';
+      }
+    });
+  }
 });

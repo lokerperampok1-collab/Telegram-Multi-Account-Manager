@@ -93,6 +93,12 @@
           </svg>
           <span class="nav-text">Join Grup Massal</span>
         </button>
+        <button class="nav-item" data-view="view-send-group" id="nav-btn-send-group">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+          </svg>
+          <span class="nav-text">Kirim Chat Grup</span>
+        </button>
         <button class="nav-item" data-view="view-profile" id="nav-btn-profile">
           <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
@@ -502,6 +508,114 @@
               </button>
 
               <div id="join-results" class="bulk-status-box" style="display: none; margin-top: 16px;"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- VIEW 6.5: KIRIM CHAT GRUP MASSAL -->
+        <div class="view-panel" id="view-send-group">
+          <div class="tool-card-lux glass-panel">
+            <div class="tool-header-lux">
+              <div class="tool-icon-circle">💬</div>
+              <div>
+                <h3 class="tool-title">Kirim Pesan Massal ke Grup (Group Messenger)</h3>
+                <p class="tool-subtitle">Kirim pesan terdistribusi dengan variasi teks berbeda per akun agar tampak alami & anti-spam</p>
+              </div>
+            </div>
+
+            <div class="tool-body-lux">
+              <!-- Target Group Input -->
+              <div class="form-group">
+                <label class="form-label" for="sendmsg-group-link">Target Tautan / Username Grup Telegram</label>
+                <input type="text" id="sendmsg-group-link" class="form-input" placeholder="Contoh: @namagrup atau https://t.me/+AbCdEf123...">
+                <div class="form-help">Mendukung username publik (@grup, t.me/grup) maupun link undangan grup privat (t.me/+...).</div>
+              </div>
+
+              <!-- Message Variations Box -->
+              <div class="form-group">
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; flex-wrap: wrap; gap: 6px;">
+                  <label class="form-label" for="sendmsg-text-variations" style="margin-bottom: 0;">Variasi Pesan (1 Baris = 1 Pesan)</label>
+                  <div style="display: flex; gap: 6px;">
+                    <button type="button" class="btn-pill" id="preset-greetings-btn" title="Gunakan template sapaan alami">Sapaan Alami (15)</button>
+                    <button type="button" class="btn-pill" id="preset-questions-btn" title="Gunakan template obrolan santai">Obrolan Santai (10)</button>
+                    <button type="button" class="btn-pill" id="preset-clear-btn" title="Kosongkan teks">Kosongkan</button>
+                  </div>
+                </div>
+                <textarea id="sendmsg-text-variations" class="form-input" rows="7" style="font-family: inherit; line-height: 1.5; resize: vertical;" placeholder="Tulis satu variasi pesan per baris...">Halo semua, izin gabung ya
+Siang agan2, salam kenal semuanya
+Halo halo, ada yang lagi online kah?
+Izin nyimak dulu suhu-suhu disini
+Halo min, salam kenal dari member baru
+Tes tes, salam kenal agan semua
+Halo guys, rame juga ya grupnya
+Izin gabung ya gaes, salam kenal semuanya
+Pagi/siang semuanya, izin stay di grup ya
+Halo gan, baru join nih. Salam kenal
+Siap meramaikan, salam kenal semuanya
+Salam kenal kawan-kawan semua, mohon bimbingannya
+Halo bro, salam kenal ya
+Mantap grupnya, izin nyimak obrolannya ya
+Halo semuanya, selamat beraktivitas ya</textarea>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 4px;">
+                  <span class="form-help">Setiap akun akan mengirim pesan berbeda sehingga tidak dianggap spam bot.</span>
+                  <span id="sendmsg-variation-count" style="font-size: 0.75rem; color: var(--accent-cyan); font-weight: 600;">15 variasi pesan</span>
+                </div>
+              </div>
+
+              <!-- Options Grid: Distribution Mode & Auto-Join -->
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px;">
+                <div class="form-group" style="margin-bottom: 0;">
+                  <label class="form-label" for="sendmsg-distribution-mode">Mode Pemilihan Pesan</label>
+                  <select id="sendmsg-distribution-mode" class="form-input">
+                    <option value="random" selected>🎲 Acak (Random) - Rekomendasi</option>
+                    <option value="round_robin">🔄 Berurutan (Round-Robin)</option>
+                  </select>
+                </div>
+                <div class="form-group" style="margin-bottom: 0;">
+                  <label class="form-label">Proteksi Otomatis</label>
+                  <label style="display: flex; align-items: center; gap: 8px; margin-top: 8px; cursor: pointer;">
+                    <input type="checkbox" id="sendmsg-auto-join" checked>
+                    <span style="font-size: 0.85rem;">Otomatis Join jika belum gabung</span>
+                  </label>
+                </div>
+              </div>
+
+              <!-- Target Accounts -->
+              <div class="form-group">
+                <label class="form-label">Target Akun Pengirim</label>
+                <div style="display: flex; gap: 16px; margin-bottom: 8px;">
+                  <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                    <input type="radio" name="sendmsg-target-mode" value="all" checked id="sendmsg-target-all">
+                    <span>Semua Akun</span>
+                  </label>
+                  <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                    <input type="radio" name="sendmsg-target-mode" value="selected" id="sendmsg-target-selected">
+                    <span>Pilih Akun Tertentu</span>
+                  </label>
+                </div>
+
+                <div id="sendmsg-account-checklist" style="display: none; padding: 10px; background: rgba(0,0,0,0.25); border-radius: var(--radius-sm); border: 1px solid var(--border-color);">
+                  <div style="display: flex; gap: 6px; margin-bottom: 8px; align-items: center; flex-wrap: wrap;">
+                    <button type="button" class="btn-pill" id="sendmsg-select-all">Pilih Semua</button>
+                    <button type="button" class="btn-pill" id="sendmsg-select-none">Batal</button>
+                    <button type="button" class="btn-pill" id="sendmsg-select-online">Online Saja</button>
+                    <input type="text" id="sendmsg-search-accounts" placeholder="Cari..." style="margin-left: auto; padding: 3px 8px; font-size: 0.75rem; background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); border-radius: var(--radius-sm); color: var(--text-primary); width: 110px;">
+                  </div>
+                  <div id="sendmsg-account-items" style="max-height: 150px; overflow-y: auto;"></div>
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label" for="sendmsg-delay">Jeda Waktu Antar Akun (Detik)</label>
+                <input type="number" id="sendmsg-delay" class="form-input" value="5" min="1" max="60" style="max-width: 140px;">
+                <div class="form-help">Rekomendasi 5 - 10 detik agar obrolan terlihat mengalir wajar dan bebas blokir.</div>
+              </div>
+
+              <button class="btn btn-primary" style="width: 100%;" id="start-sendmsg-btn">
+                <span>💬 Mulai Kirim Pesan Massal</span>
+              </button>
+
+              <div id="sendmsg-results" class="bulk-status-box" style="display: none; margin-top: 16px;"></div>
             </div>
           </div>
         </div>

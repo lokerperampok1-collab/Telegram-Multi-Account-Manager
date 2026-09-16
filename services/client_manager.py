@@ -11,9 +11,9 @@ from PIL import Image
 from telethon import TelegramClient, password as pwd_mod
 from telethon.sessions import StringSession
 from telethon.tl.functions.channels import JoinChannelRequest
-from telethon.tl.functions.messages import ImportChatInviteRequest
+from telethon.tl.functions.messages import ImportChatInviteRequest, CheckChatInviteRequest
 from telethon.tl.functions.account import UpdateProfileRequest, GetPasswordRequest, GetPasswordSettingsRequest, ResetPasswordRequest
-from telethon.tl.types import account as account_types
+from telethon.tl.types import account as account_types, ChatInviteAlready, ChatInvite
 from telethon.tl.functions.photos import UploadProfilePhotoRequest
 from telethon.errors import (
     SessionPasswordNeededError,
@@ -32,7 +32,10 @@ from telethon.errors import (
     UserDeactivatedError,
     UserDeactivatedBanError,
     AuthKeyUnregisteredError,
-    FloodWaitError
+    FloodWaitError,
+    ChatWriteForbiddenError,
+    UserBannedInChannelError,
+    SlowModeWaitError
 )
 
 from config import settings
@@ -461,6 +464,147 @@ class ClientManager:
             results.append({
                 "account_id": acc_id,
                 "name": acc_name,
+                "status": res["status"],
+                "message": res["message"]
+            })
+
+            # Safe delay before next account
+            if idx < len(accounts_to_process) - 1 and delay_seconds > 0:
+                await asyncio.sleep(delay_seconds)
+
+        return results
+
+    # ------------------ Mass Group Messaging (Chat Grup) ------------------
+
+    async def send_group_message_single(
+        self,
+        client: TelegramClient,
+        target: dict,
+        message_text: str,
+        auto_join: bool = True
+    ) -> dict:
+        """Sends a message to target group/channel from a single active TelegramClient."""
+        try:
+            entity = None
+            if target["type"] == "private":
+                try:
+                    invite = await client(CheckChatInviteRequest(target["hash"]))
+                    if isinstance(invite, ChatInviteAlready):
+                        entity = invite.chat
+                    elif auto_join:
+                        joined = await client(ImportChatInviteRequest(target["hash"]))
+                        if hasattr(joined, 'chats') and joined.chats:
+                            entity = joined.chats[0]
+                        else:
+                            invite_after = await client(CheckChatInviteRequest(target["hash"]))
+                            if isinstance(invite_after, ChatInviteAlready):
+                                entity = invite_after.chat
+                    else:
+                        return {"status": "not_joined", "message": "Akun belum bergabung ke grup privat ini"}
+                except UserAlreadyParticipantError:
+                    pass
+                except (InviteHashExpiredError, InviteHashInvalidError):
+                    return {"status": "error", "message": "Link undangan privat kedaluwarsa atau tidak valid"}
+                except Exception as e:
+                    return {"status": "error", "message": f"Gagal memproses grup privat: {str(e)}"}
+            else:
+                try:
+                    entity = await client.get_entity(target["username"])
+                    if auto_join:
+                        try:
+                            await client(JoinChannelRequest(entity))
+                        except UserAlreadyParticipantError:
+                            pass
+                        except Exception:
+                            pass
+                except (UsernameInvalidError, UsernameNotOccupiedError):
+                    return {"status": "error", "message": "Username grup tidak ditemukan"}
+                except Exception as e:
+                    return {"status": "error", "message": f"Gagal menemukan grup: {str(e)}"}
+
+            if not entity:
+                return {"status": "error", "message": "Target grup tidak dapat diakses"}
+
+            # Send the message
+            sent_msg = await client.send_message(entity, message_text)
+            return {
+                "status": "success",
+                "message_id": getattr(sent_msg, 'id', None),
+                "message": "Pesan berhasil terkirim"
+            }
+        except ChatWriteForbiddenError:
+            return {"status": "forbidden", "message": "Grup membatasi izin chat untuk anggota / hanya admin yang bisa kirim pesan"}
+        except UserBannedInChannelError:
+            return {"status": "banned", "message": "Akun dibatasi atau di-banned di grup ini"}
+        except ChannelPrivateError:
+            return {"status": "error", "message": "Grup bersifat privat atau akun tidak memiliki akses"}
+        except SlowModeWaitError as e:
+            return {"status": "slowmode", "message": f"Grup mengaktifkan slowmode, perlu tunggu {e.seconds} detik"}
+        except FloodWaitError as e:
+            return {"status": "flood_wait", "seconds": e.seconds, "message": f"Limit Telegram (FloodWait {e.seconds}s)"}
+        except Exception as e:
+            return {"status": "error", "message": f"Gagal kirim pesan: {str(e)}"}
+
+    async def send_group_message_bulk(
+        self,
+        user_id: int,
+        group_link: str,
+        messages: list[str],
+        distribution_mode: str = "random",
+        auto_join: bool = True,
+        account_ids: Optional[list[int]] = None,
+        delay_seconds: int = 5
+    ) -> list[dict]:
+        """Sends distributed message variations across user's active accounts to target group."""
+        import random
+        target = self._parse_group_target(group_link)
+        results = []
+
+        all_accounts = await TelegramAccountModel.list_by_user(user_id)
+        if account_ids:
+            accounts_to_process = [acc for acc in all_accounts if acc["id"] in account_ids]
+        else:
+            accounts_to_process = all_accounts
+
+        if not accounts_to_process:
+            return [{"status": "error", "message": "Tidak ada akun Telegram yang tersedia"}]
+
+        clean_messages = [m.strip() for m in messages if m and m.strip()]
+        if not clean_messages:
+            clean_messages = ["Halo semua, salam kenal!"]
+
+        for idx, acc in enumerate(accounts_to_process):
+            acc_id = acc["id"]
+            acc_name = acc.get("display_name") or acc.get("phone_number") or f"Akun #{acc_id}"
+
+            # Select message variation
+            if distribution_mode == "round_robin":
+                selected_text = clean_messages[idx % len(clean_messages)]
+            else:
+                selected_text = random.choice(clean_messages)
+
+            # Ensure client is connected
+            client = self._active_clients.get(acc_id)
+            if not client or not client.is_connected():
+                connect_res = await self.connect_account(acc_id, user_id)
+                if connect_res.get("status") != "success":
+                    results.append({
+                        "account_id": acc_id,
+                        "name": acc_name,
+                        "phone": acc.get("phone_number"),
+                        "text": selected_text,
+                        "status": "error",
+                        "message": f"Gagal menghubungkan akun: {connect_res.get('message')}"
+                    })
+                    continue
+                client = self._active_clients.get(acc_id)
+
+            res = await self.send_group_message_single(client, target, selected_text, auto_join)
+            results.append({
+                "account_id": acc_id,
+                "name": acc_name,
+                "phone": acc.get("phone_number"),
+                "text": selected_text,
                 "status": res["status"],
                 "message": res["message"]
             })

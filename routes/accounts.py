@@ -212,6 +212,36 @@ async def join_group(req: JoinGroupRequest, current_user: dict = Depends(get_cur
     )
     return {"status": "success", "results": results}
 
+# ----------------- Send Group Messages (Chat Massal) -----------------
+
+class SendGroupMessageRequest(BaseModel):
+    account_ids: Optional[List[int]] = None
+    group_link: str
+    messages: List[str]
+    distribution_mode: str = "random" # "random" or "round_robin"
+    auto_join: bool = True
+    delay_seconds: int = Field(default=5, ge=1, le=60)
+
+@router.post("/send-group-message")
+async def send_group_message(req: SendGroupMessageRequest, current_user: dict = Depends(get_current_user)):
+    """Instructs active Telegram accounts to send distributed message variations to a group."""
+    link = req.group_link.strip()
+    if not link:
+        raise HTTPException(status_code=400, detail="Tautan atau username grup tidak boleh kosong")
+    if not req.messages or not [m for m in req.messages if m.strip()]:
+        raise HTTPException(status_code=400, detail="Variasi pesan tidak boleh kosong")
+
+    results = await client_manager.send_group_message_bulk(
+        user_id=current_user["id"],
+        group_link=link,
+        messages=req.messages,
+        distribution_mode=req.distribution_mode,
+        auto_join=req.auto_join,
+        account_ids=req.account_ids,
+        delay_seconds=req.delay_seconds
+    )
+    return {"status": "success", "results": results}
+
 # ----------------- Account Cleaner / Bersihkan Chat -----------------
 
 class CleanDialogsRequest(BaseModel):
