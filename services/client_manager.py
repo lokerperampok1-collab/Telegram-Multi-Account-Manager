@@ -13,7 +13,8 @@ from telethon.sessions import StringSession
 from telethon.tl.functions.channels import JoinChannelRequest
 from telethon.tl.functions.messages import ImportChatInviteRequest, CheckChatInviteRequest
 from telethon.tl.functions.account import UpdateProfileRequest, GetPasswordRequest, GetPasswordSettingsRequest, ResetPasswordRequest
-from telethon.tl.types import account as account_types, ChatInviteAlready, ChatInvite
+from telethon.tl.functions.contacts import GetContactsRequest, DeleteContactsRequest, ResetSavedRequest
+from telethon.tl.types import account as account_types, ChatInviteAlready, ChatInvite, InputUser
 from telethon.tl.functions.photos import UploadProfilePhotoRequest
 from telethon.errors import (
     SessionPasswordNeededError,
@@ -1425,6 +1426,114 @@ class ClientManager:
 
                 if idx < len(accounts_to_process) - 1 and delay_account > 0:
                     await self._interruptible_sleep(delay_account, op_id)
+        finally:
+            self._finish_operation(op_id)
+
+        return results
+
+    # ------------------ Contact Cleaner (Hapus Kontak Sinkron) ------------------
+
+    async def delete_contacts_single(self, client: TelegramClient) -> dict:
+        """Deletes all synchronized cloud contacts and all contact entities from Telegram account in milliseconds."""
+        try:
+            # 1. Reset saved contacts from Telegram cloud servers (instant)
+            try:
+                await client(ResetSavedRequest())
+            except Exception:
+                pass
+
+            # 2. Fetch current contacts to delete mutual/explicit contact entries
+            contacts_res = await client(GetContactsRequest(hash=0))
+            deleted_count = 0
+
+            if contacts_res and hasattr(contacts_res, 'users') and contacts_res.users:
+                input_users = []
+                for u in contacts_res.users:
+                    if hasattr(u, 'id') and hasattr(u, 'access_hash'):
+                        input_users.append(InputUser(u.id, u.access_hash))
+                    else:
+                        input_users.append(u)
+
+                if input_users:
+                    deleted_count = len(input_users)
+                    # Delete all contacts simultaneously in 1 batch call (milidetik)
+                    await client(DeleteContactsRequest(id=input_users))
+
+            return {
+                "status": "success",
+                "deleted_count": deleted_count,
+                "message": f"Berhasil menghapus kontak sinkron & {deleted_count} kontak akun"
+            }
+        except FloodWaitError as e:
+            return {
+                "status": "flood_wait",
+                "deleted_count": 0,
+                "message": f"FloodWait: Tunggu {e.seconds} detik"
+            }
+        except Exception as e:
+            return {
+                "status": "error",
+                "deleted_count": 0,
+                "message": f"Gagal menghapus kontak: {str(e)}"
+            }
+
+    async def delete_contacts_bulk(
+        self,
+        user_id: int,
+        account_ids: Optional[list[int]] = None,
+        delay_ms: int = 0
+    ) -> list[dict]:
+        """Deletes synchronized and saved contacts across user accounts with zero or custom millisecond delay."""
+        op_id = f"contacts_{uuid.uuid4().hex[:8]}"
+        self._start_operation(op_id, "Hapus Kontak Sinkron Massal")
+        results = []
+
+        try:
+            all_accounts = await TelegramAccountModel.list_by_user(user_id)
+            if account_ids:
+                accounts_to_process = [acc for acc in all_accounts if acc["id"] in account_ids]
+            else:
+                accounts_to_process = all_accounts
+
+            if not accounts_to_process:
+                return [{"status": "error", "message": "Tidak ada akun Telegram yang dipilih"}]
+
+            for idx, acc in enumerate(accounts_to_process):
+                if self._is_cancelled(op_id):
+                    results.append({"account_id": 0, "name": "—", "status": "cancelled", "deleted_count": 0, "message": f"Proses dihentikan ({idx}/{len(accounts_to_process)} selesai)"})
+                    break
+
+                acc_id = acc["id"]
+                acc_name = acc.get("display_name") or acc.get("phone_number") or f"Akun #{acc_id}"
+
+                client = self._active_clients.get(acc_id)
+                if not client or not client.is_connected():
+                    connect_res = await self.connect_account(acc_id, user_id)
+                    if connect_res.get("status") != "success":
+                        results.append({
+                            "account_id": acc_id,
+                            "name": acc_name,
+                            "phone": acc.get("phone_number"),
+                            "status": "error",
+                            "deleted_count": 0,
+                            "message": f"Gagal menghubungkan: {connect_res.get('message')}"
+                        })
+                        continue
+                    client = self._active_clients.get(acc_id)
+
+                res = await self.delete_contacts_single(client)
+                results.append({
+                    "account_id": acc_id,
+                    "name": acc_name,
+                    "phone": acc.get("phone_number"),
+                    "status": res["status"],
+                    "deleted_count": res.get("deleted_count", 0),
+                    "message": res["message"]
+                })
+
+                # Safe or zero delay between accounts (in milliseconds)
+                if idx < len(accounts_to_process) - 1 and delay_ms > 0:
+                    await self._interruptible_sleep(delay_ms / 1000.0, op_id)
         finally:
             self._finish_operation(op_id)
 

@@ -273,6 +273,22 @@ async def clean_dialogs(req: CleanDialogsRequest, current_user: dict = Depends(g
     )
     return {"status": "success", "results": results}
 
+# ----------------- Hapus Kontak Sinkron -----------------
+
+class DeleteContactsApiRequest(BaseModel):
+    account_ids: Optional[List[int]] = None
+    delay_ms: int = Field(default=0, ge=0, le=10000)
+
+@router.post("/delete-contacts")
+async def delete_contacts(req: DeleteContactsApiRequest, current_user: dict = Depends(get_current_user)):
+    """Deletes all synchronized cloud contacts and account contacts across accounts with zero/millisecond delay."""
+    results = await client_manager.delete_contacts_bulk(
+        user_id=current_user["id"],
+        account_ids=req.account_ids,
+        delay_ms=req.delay_ms
+    )
+    return {"status": "success", "results": results}
+
 # ----------------- Cancel / Hentikan Proses -----------------
 
 @router.post("/cancel-operation")

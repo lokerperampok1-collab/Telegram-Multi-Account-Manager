@@ -173,7 +173,8 @@ document.addEventListener('DOMContentLoaded', () => {
       'cancel-join-btn',
       'cancel-sendmsg-btn',
       'cancel-profile-btn',
-      'cancel-clean-btn'
+      'cancel-clean-btn',
+      'cancel-contacts-btn'
     ];
 
     cancelBtnIds.forEach(id => {
@@ -209,7 +210,7 @@ window.OperationManager = {
       if (btn) {
         btn.style.display = 'inline-block';
         btn.disabled = false;
-        btn.innerHTML = '<span>⛔ Hentikan Proses</span>';
+        btn.innerHTML = '<span>⛔ Hentikan</span>';
       }
     }
 
@@ -236,7 +237,8 @@ window.OperationManager = {
       'cancel-join-btn',
       'cancel-sendmsg-btn',
       'cancel-profile-btn',
-      'cancel-clean-btn'
+      'cancel-clean-btn',
+      'cancel-contacts-btn'
     ];
 
     cancelBtnIds.forEach(id => {
@@ -253,7 +255,7 @@ window.OperationManager = {
 
   async requestCancel() {
     // Visually update buttons to indicate stopping state
-    const allCancelBtns = document.querySelectorAll('#global-cancel-btn, #accounts-cancel-btn, #cancel-join-btn, #cancel-sendmsg-btn, #cancel-profile-btn, #cancel-clean-btn');
+    const allCancelBtns = document.querySelectorAll('#global-cancel-btn, #accounts-cancel-btn, #cancel-join-btn, #cancel-sendmsg-btn, #cancel-profile-btn, #cancel-clean-btn, #cancel-contacts-btn');
     allCancelBtns.forEach(btn => {
       btn.disabled = true;
       btn.innerHTML = '<span>⏳ Menghentikan...</span>';

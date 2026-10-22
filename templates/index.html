@@ -113,6 +113,15 @@
           </svg>
           <span class="nav-text">Bersihkan Chat</span>
         </button>
+        <button class="nav-item" data-view="view-contacts" id="nav-btn-contacts">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+            <circle cx="9" cy="7" r="4"></circle>
+            <line x1="18" y1="8" x2="23" y2="13"></line>
+            <line x1="23" y1="8" x2="18" y2="13"></line>
+          </svg>
+          <span class="nav-text">Hapus Kontak</span>
+        </button>
 
         <div class="nav-section-label">AKSI SISTEM & BACKUP</div>
         <button class="nav-item" id="sidebar-check-health-btn">
@@ -800,6 +809,76 @@ Halo semuanya, selamat beraktivitas ya</textarea>
               </div>
 
               <div id="clean-results" class="bulk-status-box" style="display: none; margin-top: 16px;"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- VIEW 9: HAPUS KONTAK SINKRON -->
+        <div class="view-panel" id="view-contacts">
+          <div class="tool-card-lux glass-panel">
+            <div class="tool-header-lux">
+              <div class="tool-icon-circle" style="background: linear-gradient(135deg, var(--accent-rose), #e11d48);">📇</div>
+              <div>
+                <h3 class="tool-title">Hapus Kontak Sinkron & Kontak Akun (Contact Cleaner)</h3>
+                <p class="tool-subtitle">Kosongkan seluruh kontak buku telepon tersinkronisasi di cloud Telegram dan hapus kontak akun secara instan tanpa jeda (milidetik)</p>
+              </div>
+            </div>
+
+            <div class="tool-body-lux">
+              <div class="form-group">
+                <div style="background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: var(--radius-sm); padding: 12px 14px; font-size: 0.85rem; color: var(--text-primary); margin-bottom: 4px;">
+                  ⚡ <strong>Proses Instan (Milidetik):</strong> Fitur ini mengeksekusi <code>ResetSavedRequest</code> (reset buku kontak cloud Telegram) dan <code>DeleteContactsRequest</code> dalam satu batch sekaligus. Semua kontak akan bersih total dalam hitungan milidetik per akun.
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">Target Akun</label>
+                <div style="display: flex; gap: 16px; margin-bottom: 8px;">
+                  <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                    <input type="radio" name="contacts-target-mode" value="all" checked id="contacts-target-all">
+                    <span>Semua Akun</span>
+                  </label>
+                  <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                    <input type="radio" name="contacts-target-mode" value="selected" id="contacts-target-selected">
+                    <span>Pilih Akun Tertentu</span>
+                  </label>
+                </div>
+
+                <div id="contacts-account-checklist" style="display: none; padding: 10px; background: rgba(0,0,0,0.25); border-radius: var(--radius-sm); border: 1px solid var(--border-color);">
+                  <div style="display: flex; gap: 6px; margin-bottom: 8px; align-items: center; flex-wrap: wrap;">
+                    <button type="button" class="btn-pill" id="contacts-select-all">Pilih Semua</button>
+                    <button type="button" class="btn-pill" id="contacts-select-none">Batal</button>
+                    <button type="button" class="btn-pill" id="contacts-select-online">Online Saja</button>
+                    <input type="text" id="contacts-search-accounts" placeholder="Cari..." style="margin-left: auto; padding: 3px 8px; font-size: 0.75rem; background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); border-radius: var(--radius-sm); color: var(--text-primary); width: 110px;">
+                  </div>
+                  <div id="contacts-account-items" style="max-height: 150px; overflow-y: auto;"></div>
+                </div>
+              </div>
+
+              <div class="form-group">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; flex-wrap: wrap; gap: 6px;">
+                  <label class="form-label" for="contacts-delay-ms" style="margin-bottom: 0;">Jeda Waktu Antar Akun (Milidetik / ms)</label>
+                  <div style="display: flex; gap: 6px;">
+                    <button type="button" class="btn-pill" id="delay-preset-0">⚡ 0ms (No Delay)</button>
+                    <button type="button" class="btn-pill" id="delay-preset-50">50ms</button>
+                    <button type="button" class="btn-pill" id="delay-preset-200">200ms</button>
+                    <button type="button" class="btn-pill" id="delay-preset-500">500ms</button>
+                  </div>
+                </div>
+                <input type="number" id="contacts-delay-ms" class="form-input" value="0" min="0" max="10000" step="50" style="max-width: 160px;">
+                <div class="form-help">Pilih <strong>0 ms (No Delay)</strong> untuk kecepatan milidetik instan (semua akun selesai kilat) atau beri sedikit jeda jika diinginkan.</div>
+              </div>
+
+              <div style="display: flex; gap: 10px; width: 100%;">
+                <button class="btn btn-danger" style="flex: 1;" id="start-contacts-btn">
+                  <span>📇 Mulai Hapus Semua Kontak</span>
+                </button>
+                <button class="btn btn-secondary" style="display: none; padding: 10px 18px; font-weight: 600; border-color: var(--accent-rose); color: var(--accent-rose);" id="cancel-contacts-btn">
+                  <span>⛔ Hentikan</span>
+                </button>
+              </div>
+
+              <div id="contacts-results" class="bulk-status-box" style="display: none; margin-top: 16px;"></div>
             </div>
           </div>
         </div>

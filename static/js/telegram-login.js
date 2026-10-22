@@ -1285,4 +1285,196 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     });
   }
+
+  // ------------------- HAPUS KONTAK SINKRON FLOW -------------------
+  const contactsRadioAll = document.getElementById('contacts-target-all');
+  const contactsRadioSelected = document.getElementById('contacts-target-selected');
+  const contactsChecklistContainer = document.getElementById('contacts-account-checklist');
+  const contactsItemsContainer = document.getElementById('contacts-account-items');
+  const contactsSelectAll = document.getElementById('contacts-select-all');
+  const contactsSelectNone = document.getElementById('contacts-select-none');
+  const contactsSelectOnline = document.getElementById('contacts-select-online');
+  const contactsSearchAccounts = document.getElementById('contacts-search-accounts');
+  const contactsDelayMs = document.getElementById('contacts-delay-ms');
+  const startContactsBtn = document.getElementById('start-contacts-btn');
+  const contactsResults = document.getElementById('contacts-results');
+
+  // Preset buttons
+  const delayPreset0 = document.getElementById('delay-preset-0');
+  const delayPreset50 = document.getElementById('delay-preset-50');
+  const delayPreset200 = document.getElementById('delay-preset-200');
+  const delayPreset500 = document.getElementById('delay-preset-500');
+
+  if (contactsDelayMs) {
+    if (delayPreset0) delayPreset0.addEventListener('click', () => { contactsDelayMs.value = 0; });
+    if (delayPreset50) delayPreset50.addEventListener('click', () => { contactsDelayMs.value = 50; });
+    if (delayPreset200) delayPreset200.addEventListener('click', () => { contactsDelayMs.value = 200; });
+    if (delayPreset500) delayPreset500.addEventListener('click', () => { contactsDelayMs.value = 500; });
+  }
+
+  let cachedContactsAccounts = [];
+
+  function renderContactsChecklist(accounts) {
+    if (!contactsItemsContainer) return;
+    if (accounts.length === 0) {
+      contactsItemsContainer.innerHTML = '<div style="color: var(--text-muted); font-size: 0.8rem; padding: 4px;">Tidak ada akun yang sesuai</div>';
+      return;
+    }
+
+    contactsItemsContainer.innerHTML = accounts.map(acc => {
+      const name = acc.display_name || acc.username || acc.phone_number || `Akun #${acc.id}`;
+      const isOnline = acc.is_active;
+      return `
+        <label style="display: flex; align-items: center; gap: 8px; font-size: 0.8rem; margin-bottom: 4px; cursor: pointer;">
+          <input type="checkbox" class="contacts-acc-checkbox" value="${acc.id}" data-online="${isOnline ? '1' : '0'}">
+          <span>${name} (${acc.phone_number || 'Tanpa no.'}) ${isOnline ? '<span style="color: var(--accent-green);">●</span>' : '<span style="color: var(--text-muted);">○</span>'}</span>
+        </label>
+      `;
+    }).join('');
+  }
+
+  async function populateContactsChecklist() {
+    if (!contactsItemsContainer) return;
+    try {
+      const res = await fetch('/api/accounts?limit=0', { headers: getAuthHeaders() });
+      const data = await res.json();
+      cachedContactsAccounts = data.accounts || [];
+      renderContactsChecklist(cachedContactsAccounts);
+    } catch (e) {
+      contactsItemsContainer.innerHTML = '<div style="color: var(--accent-rose); font-size: 0.8rem;">Gagal memuat daftar akun</div>';
+    }
+  }
+
+  if (contactsSelectAll) {
+    contactsSelectAll.addEventListener('click', () => {
+      document.querySelectorAll('.contacts-acc-checkbox').forEach(cb => cb.checked = true);
+    });
+  }
+  if (contactsSelectNone) {
+    contactsSelectNone.addEventListener('click', () => {
+      document.querySelectorAll('.contacts-acc-checkbox').forEach(cb => cb.checked = false);
+    });
+  }
+  if (contactsSelectOnline) {
+    contactsSelectOnline.addEventListener('click', () => {
+      document.querySelectorAll('.contacts-acc-checkbox').forEach(cb => {
+        cb.checked = cb.getAttribute('data-online') === '1';
+      });
+    });
+  }
+  if (contactsSearchAccounts) {
+    contactsSearchAccounts.addEventListener('input', (e) => {
+      const q = e.target.value.toLowerCase().trim();
+      const filtered = cachedContactsAccounts.filter(acc => {
+        const name = (acc.display_name || '').toLowerCase();
+        const user = (acc.username || '').toLowerCase();
+        const phone = (acc.phone_number || '').toLowerCase();
+        return name.includes(q) || user.includes(q) || phone.includes(q);
+      });
+      renderContactsChecklist(filtered);
+    });
+  }
+
+  if (contactsRadioAll && contactsRadioSelected && contactsChecklistContainer) {
+    contactsRadioAll.addEventListener('change', () => {
+      contactsChecklistContainer.style.display = 'none';
+    });
+
+    contactsRadioSelected.addEventListener('change', () => {
+      contactsChecklistContainer.style.display = 'block';
+      populateContactsChecklist();
+    });
+  }
+
+  if (startContactsBtn && contactsDelayMs && contactsResults) {
+    startContactsBtn.addEventListener('click', async () => {
+      let targetIds = null;
+      if (contactsRadioSelected && contactsRadioSelected.checked) {
+        const checkedBoxes = document.querySelectorAll('.contacts-acc-checkbox:checked');
+        targetIds = Array.from(checkedBoxes).map(cb => parseInt(cb.value));
+        if (targetIds.length === 0) {
+          showToast('Pilih minimal satu akun target', 'warning');
+          return;
+        }
+      }
+
+      const delayVal = parseInt(contactsDelayMs.value) || 0;
+
+      if (!confirm(`Konfirmasi: Seluruh kontak sinkron & kontak akun Telegram pada ${targetIds ? targetIds.length + ' akun terpilih' : 'SEMUA AKUN'} akan dihapus permanen. Lanjutkan?`)) {
+        return;
+      }
+
+      startContactsBtn.disabled = true;
+      startContactsBtn.innerHTML = '<div class="spinner"></div> Menghapus kontak...';
+      contactsResults.style.display = 'flex';
+      contactsResults.innerHTML = '<div style="color: var(--text-secondary); padding: 8px;">Mengeksekusi penghapusan kontak sinkron kilat...</div>';
+
+      if (window.OperationManager) {
+        window.OperationManager.setRunning('Hapus Kontak Sinkron Massal', 'cancel-contacts-btn');
+      }
+
+      try {
+        const res = await fetch('/api/accounts/delete-contacts', {
+          method: 'POST',
+          headers: getAuthHeaders(),
+          body: JSON.stringify({
+            account_ids: targetIds,
+            delay_ms: delayVal
+          })
+        });
+        const data = await res.json();
+
+        if (res.ok && data.results) {
+          const successCount = data.results.filter(r => r.status === 'success').length;
+          const cancelCount = data.results.filter(r => r.status === 'cancelled').length;
+          const failCount = data.results.filter(r => r.status !== 'success' && r.status !== 'cancelled').length;
+          const totalDeletedContacts = data.results.reduce((sum, r) => sum + (r.deleted_count || 0), 0);
+
+          let summaryHtml = `
+            <div style="margin-bottom: 10px; padding: 8px 12px; background: rgba(0,0,0,0.3); border-radius: var(--radius-sm); display: flex; justify-content: space-between; font-size: 0.85rem; flex-wrap: wrap; gap: 8px;">
+              <span>Total Akun: <strong>${data.results.length}</strong></span>
+              <span style="color: var(--accent-green);">✓ Sukses: <strong>${successCount}</strong> akun</span>
+              <span style="color: var(--accent-cyan);">📇 Kontak Dihapus: <strong>${totalDeletedContacts}</strong></span>
+              ${cancelCount > 0 ? `<span style="color: var(--accent-amber);">⛔ Dihentikan: <strong>${cancelCount}</strong></span>` : ''}
+              ${failCount > 0 ? `<span style="color: var(--accent-rose);">❌ Gagal: <strong>${failCount}</strong></span>` : ''}
+            </div>
+          `;
+
+          contactsResults.innerHTML = summaryHtml + data.results.map(r => {
+            const isOk = r.status === 'success';
+            const isCancelled = r.status === 'cancelled';
+            const badgeClass = isCancelled ? 'waiting' : (isOk ? 'success' : 'error');
+            const badgeText = isCancelled ? '⛔ Dihentikan' : (isOk ? 'Bersih' : 'Gagal');
+
+            return `
+              <div class="bulk-item">
+                <div style="flex: 1; min-width: 0;">
+                  <span class="bulk-item-phone">${r.name || 'Akun'} (${r.phone || '-'})</span>
+                  <div style="font-size: 0.75rem; color: var(--text-muted);">${r.message}</div>
+                </div>
+                <div>
+                  <span class="badge-status ${badgeClass}">${badgeText}</span>
+                </div>
+              </div>
+            `;
+          }).join('');
+
+          showToast(`Selesai! Kontak sinkron berhasil dibersihkan (${totalDeletedContacts} kontak dihapus)`, 'success');
+          if (window.loadAccounts) window.loadAccounts();
+        } else {
+          contactsResults.innerHTML = `<div style="color: var(--accent-rose); padding: 8px;">${data.detail || 'Gagal menghapus kontak'}</div>`;
+          showToast(data.detail || 'Gagal menghapus kontak', 'error');
+        }
+      } catch (err) {
+        showToast('Koneksi server terputus', 'error');
+        contactsResults.innerHTML = '<div style="color: var(--accent-rose); padding: 8px;">Koneksi server gagal.</div>';
+      } finally {
+        startContactsBtn.disabled = false;
+        startContactsBtn.innerHTML = '<span>📇 Mulai Hapus Semua Kontak</span>';
+        if (window.OperationManager) {
+          window.OperationManager.setFinished('cancel-contacts-btn');
+        }
+      }
+    });
+  }
 });
