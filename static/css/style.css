@@ -383,6 +383,53 @@ body {
   font-weight: 500;
 }
 
+.phone-copy-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  padding: 3px 8px;
+  margin: -3px -8px;
+  border-radius: var(--radius-sm);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  color: var(--text-primary);
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-size: 0.82rem;
+  letter-spacing: 0.2px;
+  user-select: all;
+  border: 1px solid transparent;
+}
+
+.phone-copy-badge:hover {
+  background: rgba(0, 212, 255, 0.12);
+  border-color: rgba(0, 212, 255, 0.35);
+  color: var(--accent-cyan) !important;
+  box-shadow: 0 0 10px rgba(0, 212, 255, 0.2);
+}
+
+.phone-copy-badge:hover .phone-copy-icon {
+  opacity: 1;
+  stroke: var(--accent-cyan);
+}
+
+.phone-copy-badge:active {
+  transform: scale(0.96);
+}
+
+.phone-copy-icon {
+  width: 13px;
+  height: 13px;
+  opacity: 0.55;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+
+.phone-copied-toast {
+  color: var(--accent-green) !important;
+  background: rgba(16, 185, 129, 0.15) !important;
+  border-color: rgba(16, 185, 129, 0.4) !important;
+}
+
 .account-actions {
   display: flex;
   gap: 8px;

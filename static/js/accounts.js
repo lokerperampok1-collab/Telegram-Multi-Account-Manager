@@ -150,7 +150,15 @@ function renderAccounts(accounts) {
         <div class="account-details">
           <div class="detail-row">
             <span>Nomor HP</span>
-            <span>${acc.phone_number || '-'}</span>
+            ${acc.phone_number ? `
+              <span class="phone-copy-badge" onclick="copyPhoneNumber('${escapeHtml(acc.phone_number)}', this)" title="Klik untuk salin ${escapeHtml(acc.phone_number)}">
+                <span>${escapeHtml(acc.phone_number)}</span>
+                <svg class="phone-copy-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                </svg>
+              </span>
+            ` : `<span>-</span>`}
           </div>
           <div class="detail-row">
             <span>Telegram ID</span>
@@ -844,7 +852,13 @@ window.openOtpModal = function(accountId, displayName, phoneNumber) {
   const copyBtnText = document.getElementById('copy-btn-text');
 
   if (titleEl) titleEl.textContent = displayName || `Akun #${accountId}`;
-  if (phoneEl) phoneEl.textContent = `Nomor HP: ${phoneNumber || '-'}`;
+  if (phoneEl) {
+    if (phoneNumber && phoneNumber !== '-') {
+      phoneEl.innerHTML = `Nomor HP: <span class="phone-copy-badge" onclick="copyPhoneNumber('${escapeHtml(phoneNumber)}', this)" title="Klik untuk salin ${escapeHtml(phoneNumber)}" style="display:inline-flex; vertical-align:middle; cursor:pointer;"><span>${escapeHtml(phoneNumber)}</span> <svg class="phone-copy-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg></span>`;
+    } else {
+      phoneEl.textContent = 'Nomor HP: -';
+    }
+  }
   if (codeValEl) codeValEl.textContent = '------';
   if (timeBadgeEl) timeBadgeEl.innerHTML = '<span class="pulse-dot" style="display:inline-block; margin-right:6px;"></span> Memeriksa pesan Telegram (777000)...';
   if (historyList) historyList.innerHTML = '<div class="otp-empty-history">Memuat riwayat pesan Telegram...</div>';
@@ -984,6 +998,53 @@ window.copySpecificOtp = function(code) {
     prompt('Salin kode OTP ini:', code);
   });
 };
+
+window.copyPhoneNumber = function(phone, element) {
+  if (!phone || phone === '-' || phone === 'Tanpa no.') return;
+  const cleanPhone = phone.trim();
+
+  const handleSuccess = () => {
+    showToast(`Nomor ${cleanPhone} disalin ke clipboard!`, 'success');
+    if (element) {
+      element.classList.add('phone-copied-toast');
+      const originalHtml = element.innerHTML;
+      element.innerHTML = `
+        <span>${escapeHtml(cleanPhone)}</span>
+        <svg class="phone-copy-icon" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2.5">
+          <polyline points="20 6 9 17 4 12"></polyline>
+        </svg>
+      `;
+      setTimeout(() => {
+        element.classList.remove('phone-copied-toast');
+        element.innerHTML = originalHtml;
+      }, 1200);
+    }
+  };
+
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(cleanPhone).then(handleSuccess).catch(() => {
+      fallbackCopyPhone(cleanPhone, handleSuccess);
+    });
+  } else {
+    fallbackCopyPhone(cleanPhone, handleSuccess);
+  }
+};
+
+function fallbackCopyPhone(text, onSuccess) {
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.position = 'fixed';
+  ta.style.opacity = '0';
+  document.body.appendChild(ta);
+  ta.select();
+  try {
+    document.execCommand('copy');
+    if (onSuccess) onSuccess();
+  } catch (e) {
+    prompt('Salin nomor HP:', text);
+  }
+  document.body.removeChild(ta);
+}
 
 // Global exports for sidebar and inline event handlers
 window.checkAccount2FA = checkAccount2FA;
