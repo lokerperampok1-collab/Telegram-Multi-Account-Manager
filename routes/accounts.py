@@ -86,6 +86,12 @@ async def delete_account(account_id: int, current_user: dict = Depends(get_curre
         raise HTTPException(status_code=404, detail=res.get("message"))
     return res
 
+@router.post("/refresh-and-clean")
+async def refresh_and_clean_accounts(current_user: dict = Depends(get_current_user)):
+    """Verifies all account sessions, keeps valid ones online, and permanently deletes offline/dead/revoked accounts."""
+    result = await client_manager.refresh_and_clean_accounts(current_user["id"])
+    return result
+
 # ----------------- Health & SpamBot Check -----------------
 
 @router.post("/{account_id}/check-health")

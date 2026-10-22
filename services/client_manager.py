@@ -33,6 +33,7 @@ from telethon.errors import (
     UserDeactivatedError,
     UserDeactivatedBanError,
     AuthKeyUnregisteredError,
+    SessionRevokedError,
     FloodWaitError,
     ChatWriteForbiddenError,
     UserBannedInChannelError,
@@ -420,6 +421,98 @@ class ClientManager:
         if deleted:
             return {"status": "success", "message": "Account removed"}
         return {"status": "error", "message": "Account not found"}
+
+    async def refresh_and_clean_accounts(self, user_id: int) -> dict:
+        """
+        Verifies session status for all accounts of a user.
+        If an account is offline, session revoked, expired, banned, or logged out ('keluar sesi' / 'tidak online'),
+        it is permanently deleted from the database and account list.
+        """
+        accounts = await TelegramAccountModel.list_by_user(user_id)
+        if not accounts:
+            return {
+                "status": "success",
+                "total_checked": 0,
+                "online_count": 0,
+                "deleted_count": 0,
+                "deleted_accounts": [],
+                "message": "Tidak ada akun Telegram terdaftar"
+            }
+
+        deleted_accounts = []
+        online_accounts = []
+        sem = asyncio.Semaphore(12)
+
+        async def verify_account(acc):
+            acc_id = acc["id"]
+            phone = acc.get("phone_number") or ""
+            name = acc.get("display_name") or phone or f"Akun #{acc_id}"
+            is_valid = False
+            client = self._active_clients.get(acc_id)
+
+            async with sem:
+                try:
+                    if not client or not client.is_connected():
+                        api_id, api_hash = self._get_credentials()
+                        session_str = encryption_service.decrypt(acc["session_string"])
+                        client = TelegramClient(StringSession(session_str), api_id, api_hash)
+                        await client.connect()
+
+                    if await client.is_user_authorized():
+                        me = await client.get_me()
+                        if me:
+                            is_valid = True
+                            self._active_clients[acc_id] = client
+                            await TelegramAccountModel.update_status(acc_id, True)
+                            new_name = f"{me.first_name or ''} {me.last_name or ''}".strip()
+                            if new_name and new_name != acc.get("display_name"):
+                                await TelegramAccountModel.update_display_name(acc_id, new_name)
+                    else:
+                        is_valid = False
+                except (AuthKeyUnregisteredError, UserDeactivatedError, UserDeactivatedBanError, SessionRevokedError, SessionPasswordNeededError):
+                    is_valid = False
+                except Exception as e:
+                    err_msg = str(e).lower()
+                    if any(term in err_msg for term in ["authkey", "deactivated", "banned", "revoked", "unregistered", "expired", "invalid"]):
+                        is_valid = False
+                    else:
+                        is_valid = False
+
+                if not is_valid:
+                    if acc_id in self._active_clients:
+                        c = self._active_clients.pop(acc_id, None)
+                        if c:
+                            try:
+                                await c.disconnect()
+                            except Exception:
+                                pass
+                    await TelegramAccountModel.delete(acc_id, user_id)
+                    deleted_accounts.append({
+                        "id": acc_id,
+                        "name": name,
+                        "phone": phone
+                    })
+                else:
+                    online_accounts.append({
+                        "id": acc_id,
+                        "name": name,
+                        "phone": phone
+                    })
+
+        await asyncio.gather(*(verify_account(acc) for acc in accounts))
+
+        msg = f"Refresh selesai: {len(online_accounts)} akun online aktif"
+        if deleted_accounts:
+            msg += f", {len(deleted_accounts)} akun offline/keluar sesi telah dihapus"
+
+        return {
+            "status": "success",
+            "total_checked": len(accounts),
+            "online_count": len(online_accounts),
+            "deleted_count": len(deleted_accounts),
+            "deleted_accounts": deleted_accounts,
+            "message": msg
+        }
 
     # ------------------ Group Join Methods ------------------
 

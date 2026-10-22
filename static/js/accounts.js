@@ -500,9 +500,38 @@ async function triggerExport(format) {
 document.addEventListener('DOMContentLoaded', () => {
   const refreshBtn = document.getElementById('refresh-accounts-btn');
   if (refreshBtn) {
-    refreshBtn.addEventListener('click', () => {
-      loadAccounts();
-      showToast('Daftar akun diperbarui', 'info');
+    refreshBtn.addEventListener('click', async () => {
+      const originalHtml = refreshBtn.innerHTML;
+      refreshBtn.disabled = true;
+      refreshBtn.innerHTML = `
+        <div class="spinner" style="width: 13px; height: 13px; border-width: 2px; display: inline-block;"></div>
+        <span class="btn-text-desktop">Memeriksa...</span>
+      `;
+      showToast('Memeriksa status sesi & kesehatan seluruh akun...', 'info');
+
+      try {
+        const res = await fetch('/api/accounts/refresh-and-clean', {
+          method: 'POST',
+          headers: getAuthHeaders()
+        });
+        const data = await res.json();
+
+        if (res.ok) {
+          if (data.deleted_count > 0) {
+            showToast(`Refresh selesai: ${data.online_count} akun online, ${data.deleted_count} akun keluar sesi/offline telah dihapus!`, 'warning');
+          } else {
+            showToast(`Refresh selesai: Seluruh ${data.online_count} akun online aktif!`, 'success');
+          }
+        } else {
+          showToast(data.detail || 'Gagal merefresh akun', 'error');
+        }
+      } catch (e) {
+        showToast('Koneksi server gagal saat refresh', 'error');
+      } finally {
+        await loadAccounts();
+        refreshBtn.disabled = false;
+        refreshBtn.innerHTML = originalHtml;
+      }
     });
   }
 
