@@ -307,6 +307,9 @@ async function checkAllAccountsHealth() {
     btn.disabled = true;
     btn.innerHTML = '<div class="spinner"></div> Cek @SpamBot...';
   }
+  if (window.OperationManager) {
+    window.OperationManager.setRunning('Cek Status @SpamBot Semua Akun', 'accounts-cancel-btn');
+  }
   showToast('Memulai pengecekan @SpamBot untuk semua akun...', 'info');
 
   try {
@@ -326,6 +329,8 @@ async function checkAllAccountsHealth() {
             badge.innerHTML = '<span style="color: var(--accent-amber);">🟡 Limited</span>';
           } else if (r.status === 'banned') {
             badge.innerHTML = '<span style="color: var(--accent-rose);">🔴 Banned/Mati</span>';
+          } else if (r.status === 'cancelled') {
+            badge.innerHTML = '<span style="color: var(--accent-amber);">⛔ Dibatalkan</span>';
           } else {
             badge.innerHTML = `<span style="color: var(--text-muted);">⚪ ${r.badge || 'Unknown'}</span>`;
           }
@@ -341,6 +346,9 @@ async function checkAllAccountsHealth() {
     if (btn) {
       btn.disabled = false;
       btn.innerHTML = '🛡️ Cek Status Akun';
+    }
+    if (window.OperationManager) {
+      window.OperationManager.setFinished('accounts-cancel-btn');
     }
   }
 }
@@ -405,6 +413,9 @@ async function checkAllAccounts2FA() {
     btn.disabled = true;
     btn.innerHTML = '<div class="spinner"></div> Cek 2FA...';
   }
+  if (window.OperationManager) {
+    window.OperationManager.setRunning('Cek Status 2FA Semua Akun', 'accounts-cancel-btn');
+  }
   showToast('Memeriksa 2FA (mencocokkan 0707 / 7 dan reset jika salah)...', 'info');
 
   try {
@@ -427,6 +438,8 @@ async function checkAllAccounts2FA() {
             if (r.twofa_password) countMatched++;
             else if (r.twofa_status === 'reset_pending') countReset++;
             else if (!r.has_2fa) countNo2fa++;
+          } else if (r.status === 'cancelled') {
+            badge.innerHTML = '<span style="color: var(--accent-amber);">⛔ Dibatalkan</span>';
           } else {
             badge.innerHTML = '<span style="color: var(--accent-rose);" title="' + escapeHtml(r.message || 'Gagal cek') + '">⚠️ Gagal</span>';
           }
@@ -442,6 +455,9 @@ async function checkAllAccounts2FA() {
     if (btn) {
       btn.disabled = false;
       btn.innerHTML = '🔒 Cek 2FA Semua';
+    }
+    if (window.OperationManager) {
+      window.OperationManager.setFinished('accounts-cancel-btn');
     }
   }
 }

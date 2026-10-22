@@ -273,3 +273,16 @@ async def clean_dialogs(req: CleanDialogsRequest, current_user: dict = Depends(g
     )
     return {"status": "success", "results": results}
 
+# ----------------- Cancel / Hentikan Proses -----------------
+
+@router.post("/cancel-operation")
+async def cancel_operation(current_user: dict = Depends(get_current_user)):
+    """Requests cancellation of all currently running bulk operations."""
+    result = client_manager.request_cancel_all()
+    return result
+
+@router.get("/running-operations")
+async def running_operations(current_user: dict = Depends(get_current_user)):
+    """Returns list of currently running bulk operations."""
+    return client_manager.get_running_operations()
+

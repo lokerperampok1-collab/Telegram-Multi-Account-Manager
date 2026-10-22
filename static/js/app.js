@@ -165,5 +165,123 @@ document.addEventListener('DOMContentLoaded', () => {
         if (window.triggerExport) window.triggerExport('txt');
       });
     }
+
+    // Initialize cancel button listeners
+    const cancelBtnIds = [
+      'global-cancel-btn',
+      'accounts-cancel-btn',
+      'cancel-join-btn',
+      'cancel-sendmsg-btn',
+      'cancel-profile-btn',
+      'cancel-clean-btn'
+    ];
+
+    cancelBtnIds.forEach(id => {
+      const btn = document.getElementById(id);
+      if (btn) {
+        btn.addEventListener('click', (e) => {
+          e.preventDefault();
+          window.OperationManager.requestCancel();
+        });
+      }
+    });
   }
 });
+
+// Global Operation & Cancellation Manager
+window.OperationManager = {
+  activeOperation: null,
+
+  setRunning(name, specificCancelBtnId = null) {
+    this.activeOperation = { name, specificCancelBtnId };
+
+    // Display top alert banner
+    const banner = document.getElementById('global-running-banner');
+    const desc = document.getElementById('global-running-desc');
+    if (banner && desc) {
+      desc.textContent = name;
+      banner.style.display = 'flex';
+    }
+
+    // Display specific cancel button in the active tool
+    if (specificCancelBtnId) {
+      const btn = document.getElementById(specificCancelBtnId);
+      if (btn) {
+        btn.style.display = 'inline-block';
+        btn.disabled = false;
+        btn.innerHTML = '<span>⛔ Hentikan Proses</span>';
+      }
+    }
+
+    // If on accounts view and checking health/2fa
+    const accCancelBtn = document.getElementById('accounts-cancel-btn');
+    if (accCancelBtn && specificCancelBtnId === 'accounts-cancel-btn') {
+      accCancelBtn.style.display = 'inline-block';
+      accCancelBtn.disabled = false;
+      accCancelBtn.innerHTML = '⛔ Hentikan Proses';
+    }
+  },
+
+  setFinished(specificCancelBtnId = null) {
+    this.activeOperation = null;
+
+    // Hide top alert banner
+    const banner = document.getElementById('global-running-banner');
+    if (banner) banner.style.display = 'none';
+
+    // Reset cancel buttons
+    const cancelBtnIds = [
+      'global-cancel-btn',
+      'accounts-cancel-btn',
+      'cancel-join-btn',
+      'cancel-sendmsg-btn',
+      'cancel-profile-btn',
+      'cancel-clean-btn'
+    ];
+
+    cancelBtnIds.forEach(id => {
+      const btn = document.getElementById(id);
+      if (btn) {
+        if (id !== 'global-cancel-btn') {
+          btn.style.display = 'none';
+        }
+        btn.disabled = false;
+        btn.innerHTML = id.startsWith('cancel-') ? '<span>⛔ Hentikan</span>' : '⛔ Hentikan Proses';
+      }
+    });
+  },
+
+  async requestCancel() {
+    // Visually update buttons to indicate stopping state
+    const allCancelBtns = document.querySelectorAll('#global-cancel-btn, #accounts-cancel-btn, #cancel-join-btn, #cancel-sendmsg-btn, #cancel-profile-btn, #cancel-clean-btn');
+    allCancelBtns.forEach(btn => {
+      btn.disabled = true;
+      btn.innerHTML = '<span>⏳ Menghentikan...</span>';
+    });
+
+    showToast('Mengirim sinyal penghentian proses... Mohon tunggu akun saat ini selesai.', 'info');
+
+    try {
+      const res = await fetch('/api/accounts/cancel-operation', {
+        method: 'POST',
+        headers: getAuthHeaders()
+      });
+      const data = await res.json();
+      if (res.ok) {
+        showToast('Perintah berhenti diterima! Proses akan dihentikan segera.', 'warning');
+      } else {
+        showToast(data.detail || 'Gagal mengirim permintaan stop', 'error');
+        allCancelBtns.forEach(btn => {
+          btn.disabled = false;
+          btn.innerHTML = '<span>⛔ Hentikan Proses</span>';
+        });
+      }
+    } catch (e) {
+      showToast('Koneksi server gagal saat meminta penghentian', 'error');
+      allCancelBtns.forEach(btn => {
+        btn.disabled = false;
+        btn.innerHTML = '<span>⛔ Hentikan Proses</span>';
+      });
+    }
+  }
+};

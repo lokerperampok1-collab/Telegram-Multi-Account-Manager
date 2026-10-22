@@ -526,6 +526,10 @@ document.addEventListener('DOMContentLoaded', () => {
       joinResults.style.display = 'flex';
       joinResults.innerHTML = '<div style="color: var(--text-secondary); padding: 8px;">Memproses akun untuk bergabung ke grup...</div>';
 
+      if (window.OperationManager) {
+        window.OperationManager.setRunning(`Join Grup Massal (${link})`, 'cancel-join-btn');
+      }
+
       try {
         const res = await fetch('/api/accounts/join-group', {
           method: 'POST',
@@ -552,6 +556,9 @@ document.addEventListener('DOMContentLoaded', () => {
             } else if (r.status === 'flood_wait') {
               badgeClass = 'error';
               badgeText = 'Flood Limit';
+            } else if (r.status === 'cancelled') {
+              badgeClass = 'waiting';
+              badgeText = '⛔ Dihentikan';
             }
 
             return `
@@ -577,6 +584,9 @@ document.addEventListener('DOMContentLoaded', () => {
       } finally {
         startJoinBtn.disabled = false;
         startJoinBtn.innerHTML = '<span>🚀 Jalankan Join Grup</span>';
+        if (window.OperationManager) {
+          window.OperationManager.setFinished('cancel-join-btn');
+        }
       }
     });
   }
@@ -711,6 +721,10 @@ document.addEventListener('DOMContentLoaded', () => {
       profileResults.style.display = 'flex';
       profileResults.innerHTML = '<div style="color: var(--text-secondary); padding: 8px;">Memperbarui profil akun...</div>';
 
+      if (window.OperationManager) {
+        window.OperationManager.setRunning('Update Profil Akun Massal', 'cancel-profile-btn');
+      }
+
       try {
         const token = localStorage.getItem('token');
         const res = await fetch('/api/accounts/update-profile', {
@@ -725,6 +739,10 @@ document.addEventListener('DOMContentLoaded', () => {
         if (res.ok && data.results) {
           profileResults.innerHTML = data.results.map(r => {
             const isOk = r.status === 'success';
+            const isCancelled = r.status === 'cancelled';
+            const badgeClass = isCancelled ? 'waiting' : (isOk ? 'success' : 'error');
+            const badgeText = isCancelled ? '⛔ Dihentikan' : (isOk ? 'Berhasil' : 'Gagal');
+
             return `
               <div class="bulk-item">
                 <div>
@@ -732,7 +750,7 @@ document.addEventListener('DOMContentLoaded', () => {
                   <div style="font-size: 0.75rem; color: var(--text-muted);">${r.message}</div>
                 </div>
                 <div>
-                  <span class="badge-status ${isOk ? 'success' : 'error'}">${isOk ? 'Berhasil' : 'Gagal'}</span>
+                  <span class="badge-status ${badgeClass}">${badgeText}</span>
                 </div>
               </div>
             `;
@@ -747,6 +765,9 @@ document.addEventListener('DOMContentLoaded', () => {
       } finally {
         startProfileBtn.disabled = false;
         startProfileBtn.innerHTML = '<span>👤 Terapkan Profil ke Semua Akun</span>';
+        if (window.OperationManager) {
+          window.OperationManager.setFinished('cancel-profile-btn');
+        }
       }
     });
   }
@@ -940,6 +961,10 @@ document.addEventListener('DOMContentLoaded', () => {
       cleanResults.style.display = 'flex';
       cleanResults.innerHTML = '<div style="color: var(--text-secondary); padding: 8px;">Memindai dan membersihkan percakapan Telegram...</div>';
 
+      if (window.OperationManager) {
+        window.OperationManager.setRunning('Bersihkan Chat Akun Massal', 'cancel-clean-btn');
+      }
+
       try {
         const res = await fetch('/api/accounts/clean-dialogs', {
           method: 'POST',
@@ -959,7 +984,10 @@ document.addEventListener('DOMContentLoaded', () => {
         if (res.ok && data.results) {
           cleanResults.innerHTML = data.results.map(r => {
             const isOk = r.status === 'success';
-            const stats = r.stats || {};
+            const isCancelled = r.status === 'cancelled';
+            const badgeClass = isCancelled ? 'waiting' : (isOk ? 'success' : 'error');
+            const badgeText = isCancelled ? '⛔ Dihentikan' : (isOk ? 'Selesai' : 'Gagal');
+
             return `
               <div class="bulk-item">
                 <div>
@@ -967,7 +995,7 @@ document.addEventListener('DOMContentLoaded', () => {
                   <div style="font-size: 0.75rem; color: var(--text-muted);">${r.message}</div>
                 </div>
                 <div>
-                  <span class="badge-status ${isOk ? 'success' : 'error'}">${isOk ? 'Selesai' : 'Gagal'}</span>
+                  <span class="badge-status ${badgeClass}">${badgeText}</span>
                 </div>
               </div>
             `;
@@ -983,6 +1011,9 @@ document.addEventListener('DOMContentLoaded', () => {
       } finally {
         startCleanBtn.disabled = false;
         startCleanBtn.innerHTML = '<span>🧹 Mulai Pembersihan Chat</span>';
+        if (window.OperationManager) {
+          window.OperationManager.setFinished('cancel-clean-btn');
+        }
       }
     });
   }
@@ -1184,6 +1215,10 @@ document.addEventListener('DOMContentLoaded', () => {
       sendmsgResults.style.display = 'flex';
       sendmsgResults.innerHTML = '<div style="color: var(--text-secondary); padding: 8px;">Menginisialisasi pengiriman pesan ke grup...</div>';
 
+      if (window.OperationManager) {
+        window.OperationManager.setRunning(`Kirim Pesan Grup (${link})`, 'cancel-sendmsg-btn');
+      }
+
       try {
         const res = await fetch('/api/accounts/send-group-message', {
           method: 'POST',
@@ -1201,33 +1236,39 @@ document.addEventListener('DOMContentLoaded', () => {
         const data = await res.json();
         if (res.ok && data.results) {
           const successCount = data.results.filter(r => r.status === 'success').length;
-          const failCount = data.results.length - successCount;
+          const failCount = data.results.filter(r => r.status !== 'success' && r.status !== 'cancelled').length;
+          const cancelCount = data.results.filter(r => r.status === 'cancelled').length;
 
           let summaryHtml = `
-            <div style="margin-bottom: 10px; padding: 8px 12px; background: rgba(0,0,0,0.3); border-radius: var(--radius-sm); display: flex; justify-content: space-between; font-size: 0.85rem;">
+            <div style="margin-bottom: 10px; padding: 8px 12px; background: rgba(0,0,0,0.3); border-radius: var(--radius-sm); display: flex; justify-content: space-between; font-size: 0.85rem; flex-wrap: wrap; gap: 8px;">
               <span>Total: <strong>${data.results.length}</strong> Akun</span>
               <span style="color: var(--accent-green);">✓ Sukses: <strong>${successCount}</strong></span>
+              ${cancelCount > 0 ? `<span style="color: var(--accent-amber);">⛔ Dihentikan: <strong>${cancelCount}</strong></span>` : ''}
               <span style="color: var(--accent-rose);">❌ Gagal: <strong>${failCount}</strong></span>
             </div>
           `;
 
           sendmsgResults.innerHTML = summaryHtml + data.results.map(r => {
             const isOk = r.status === 'success';
+            const isCancelled = r.status === 'cancelled';
+            const badgeClass = isCancelled ? 'waiting' : (isOk ? 'success' : 'error');
+            const badgeText = isCancelled ? '⛔ Dihentikan' : (isOk ? 'Terkirim' : 'Gagal');
+
             return `
               <div class="bulk-item">
                 <div style="flex: 1; min-width: 0;">
                   <span class="bulk-item-phone">${r.name || 'Akun'} (${r.phone || '-'})</span>
-                  <div style="font-size: 0.78rem; color: var(--accent-cyan); margin: 2px 0;">"${escapeHtml(r.text || '')}"</div>
+                  ${r.text ? `<div style="font-size: 0.78rem; color: var(--accent-cyan); margin: 2px 0;">"${escapeHtml(r.text)}"</div>` : ''}
                   <div style="font-size: 0.72rem; color: var(--text-muted);">${r.message}</div>
                 </div>
                 <div>
-                  <span class="badge-status ${isOk ? 'success' : 'error'}">${isOk ? 'Terkirim' : 'Gagal'}</span>
+                  <span class="badge-status ${badgeClass}">${badgeText}</span>
                 </div>
               </div>
             `;
           }).join('');
 
-          showToast(`Kirim chat selesai: ${successCount} berhasil, ${failCount} gagal`, successCount > 0 ? 'success' : 'warning');
+          showToast(`Kirim chat selesai: ${successCount} berhasil, ${failCount} gagal${cancelCount > 0 ? ', dihentikan' : ''}`, successCount > 0 ? 'success' : 'warning');
         } else {
           sendmsgResults.innerHTML = `<div style="color: var(--accent-rose); padding: 8px;">${data.detail || 'Gagal mengirim pesan'}</div>`;
           showToast(data.detail || 'Gagal mengirim pesan', 'error');
@@ -1238,6 +1279,9 @@ document.addEventListener('DOMContentLoaded', () => {
       } finally {
         startSendmsgBtn.disabled = false;
         startSendmsgBtn.innerHTML = '<span>💬 Mulai Kirim Pesan Massal</span>';
+        if (window.OperationManager) {
+          window.OperationManager.setFinished('cancel-sendmsg-btn');
+        }
       }
     });
   }

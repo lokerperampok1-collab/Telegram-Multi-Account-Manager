@@ -208,6 +208,17 @@
       </div>
       {% endif %}
 
+      <!-- Global Active Operation Banner -->
+      <div id="global-running-banner" style="display: none; background: linear-gradient(90deg, rgba(239, 68, 68, 0.15), rgba(245, 158, 11, 0.15)); border: 1px solid rgba(239, 68, 68, 0.4); border-radius: var(--radius-sm); padding: 10px 16px; margin: 12px 20px 0; align-items: center; justify-content: space-between; gap: 12px; z-index: 10;">
+        <div style="display: flex; align-items: center; gap: 10px; font-size: 0.85rem; color: var(--text-primary);">
+          <div class="spinner" style="width: 14px; height: 14px; border-width: 2px;"></div>
+          <span><strong>Proses Berjalan:</strong> <span id="global-running-desc">Sedang menjalankan proses massal...</span></span>
+        </div>
+        <button class="btn btn-danger btn-sm" id="global-cancel-btn" style="padding: 5px 14px; font-weight: 600; white-space: nowrap;">
+          ⛔ Hentikan Proses
+        </button>
+      </div>
+
       <!-- Viewport / Workspace Views -->
       <div class="app-viewport">
         <!-- VIEW 1: DAFTAR AKUN -->
@@ -224,6 +235,9 @@
               </button>
               <button class="btn btn-secondary btn-sm" id="check-all-2fa-btn" title="Cek status 2FA (Cloud Password) untuk semua akun">
                 🔒 Cek 2FA Semua
+              </button>
+              <button class="btn btn-danger btn-sm" id="accounts-cancel-btn" style="display: none;" title="Hentikan pengecekan yang sedang berjalan">
+                ⛔ Hentikan Proses
               </button>
               <div style="position: relative; display: inline-block;" id="export-dropdown-wrapper">
                 <button class="btn btn-secondary btn-sm" id="export-menu-btn" title="Backup & Export Session">
@@ -503,9 +517,14 @@
                 <div class="form-help">Rekomendasi 3 - 5 detik untuk mencegah rate limit Telegram.</div>
               </div>
 
-              <button class="btn btn-primary" style="width: 100%;" id="start-join-btn">
-                <span>🚀 Jalankan Join Grup</span>
-              </button>
+              <div style="display: flex; gap: 10px; width: 100%;">
+                <button class="btn btn-primary" style="flex: 1;" id="start-join-btn">
+                  <span>🚀 Jalankan Join Grup</span>
+                </button>
+                <button class="btn btn-danger" style="display: none; padding: 10px 18px; font-weight: 600;" id="cancel-join-btn">
+                  <span>⛔ Hentikan</span>
+                </button>
+              </div>
 
               <div id="join-results" class="bulk-status-box" style="display: none; margin-top: 16px;"></div>
             </div>
@@ -611,9 +630,14 @@ Halo semuanya, selamat beraktivitas ya</textarea>
                 <div class="form-help">Rekomendasi 5 - 10 detik agar obrolan terlihat mengalir wajar dan bebas blokir.</div>
               </div>
 
-              <button class="btn btn-primary" style="width: 100%;" id="start-sendmsg-btn">
-                <span>💬 Mulai Kirim Pesan Massal</span>
-              </button>
+              <div style="display: flex; gap: 10px; width: 100%;">
+                <button class="btn btn-primary" style="flex: 1;" id="start-sendmsg-btn">
+                  <span>💬 Mulai Kirim Pesan Massal</span>
+                </button>
+                <button class="btn btn-danger" style="display: none; padding: 10px 18px; font-weight: 600;" id="cancel-sendmsg-btn">
+                  <span>⛔ Hentikan</span>
+                </button>
+              </div>
 
               <div id="sendmsg-results" class="bulk-status-box" style="display: none; margin-top: 16px;"></div>
             </div>
@@ -682,9 +706,14 @@ Halo semuanya, selamat beraktivitas ya</textarea>
                 <input type="number" id="profile-delay" class="form-input" value="3" min="1" max="60" style="max-width: 140px;">
               </div>
 
-              <button class="btn btn-primary" style="width: 100%;" id="start-profile-btn">
-                <span>👤 Terapkan Profil ke Semua Akun</span>
-              </button>
+              <div style="display: flex; gap: 10px; width: 100%;">
+                <button class="btn btn-primary" style="flex: 1;" id="start-profile-btn">
+                  <span>👤 Terapkan Profil ke Semua Akun</span>
+                </button>
+                <button class="btn btn-danger" style="display: none; padding: 10px 18px; font-weight: 600;" id="cancel-profile-btn">
+                  <span>⛔ Hentikan</span>
+                </button>
+              </div>
 
               <div id="profile-results" class="bulk-status-box" style="display: none; margin-top: 16px;"></div>
             </div>
@@ -761,9 +790,14 @@ Halo semuanya, selamat beraktivitas ya</textarea>
                 </div>
               </div>
 
-              <button class="btn btn-danger" style="width: 100%;" id="start-clean-btn">
-                <span>🧹 Mulai Pembersihan Chat</span>
-              </button>
+              <div style="display: flex; gap: 10px; width: 100%;">
+                <button class="btn btn-danger" style="flex: 1;" id="start-clean-btn">
+                  <span>🧹 Mulai Pembersihan Chat</span>
+                </button>
+                <button class="btn btn-secondary" style="display: none; padding: 10px 18px; font-weight: 600; border-color: var(--accent-rose); color: var(--accent-rose);" id="cancel-clean-btn">
+                  <span>⛔ Hentikan</span>
+                </button>
+              </div>
 
               <div id="clean-results" class="bulk-status-box" style="display: none; margin-top: 16px;"></div>
             </div>

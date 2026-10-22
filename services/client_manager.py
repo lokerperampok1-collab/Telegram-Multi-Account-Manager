@@ -49,6 +49,53 @@ class ClientManager:
         self._active_clients: Dict[int, TelegramClient] = {}
         self._pending_logins: Dict[str, Dict[str, Any]] = {}
         self._pending_qr_logins: Dict[str, Dict[str, Any]] = {}
+        # Cancellation system: tracks running operations and cancel requests
+        self._running_operations: Dict[str, str] = {}  # op_id -> description
+        self._cancel_requested: set = set()  # set of op_ids to cancel
+
+    def _start_operation(self, op_id: str, description: str):
+        """Registers a new running operation."""
+        self._running_operations[op_id] = description
+        self._cancel_requested.discard(op_id)
+
+    def _finish_operation(self, op_id: str):
+        """Unregisters a completed operation."""
+        self._running_operations.pop(op_id, None)
+        self._cancel_requested.discard(op_id)
+
+    def _is_cancelled(self, op_id: str) -> bool:
+        """Checks if an operation has been requested to cancel."""
+        return op_id in self._cancel_requested
+
+    def request_cancel_all(self) -> dict:
+        """Requests cancellation of all currently running operations."""
+        cancelled = list(self._running_operations.keys())
+        for op_id in cancelled:
+            self._cancel_requested.add(op_id)
+        return {
+            "status": "success",
+            "cancelled_count": len(cancelled),
+            "operations": {k: v for k, v in self._running_operations.items() if k in cancelled}
+        }
+
+    def get_running_operations(self) -> dict:
+        """Returns currently running operations."""
+        return {
+            "running": dict(self._running_operations),
+            "count": len(self._running_operations)
+        }
+
+    async def _interruptible_sleep(self, seconds: float, op_id: Optional[str] = None):
+        """Sleeps in small increments and breaks immediately if operation is cancelled."""
+        if seconds <= 0:
+            return
+        elapsed = 0.0
+        while elapsed < seconds:
+            if op_id and self._is_cancelled(op_id):
+                break
+            step = min(0.3, seconds - elapsed)
+            await asyncio.sleep(step)
+            elapsed += step
 
     def _get_credentials(self) -> tuple[int, str]:
         if not settings.API_ID or not settings.API_HASH:
@@ -429,48 +476,58 @@ class ClientManager:
         delay_seconds: int = 3
     ) -> list[dict]:
         """Iterates through user's accounts to join specified group with safe delays."""
+        op_id = f"join_group_{uuid.uuid4().hex[:8]}"
+        self._start_operation(op_id, f"Join Grup: {group_link}")
         target = self._parse_group_target(group_link)
         results = []
 
-        all_accounts = await TelegramAccountModel.list_by_user(user_id)
-        if account_ids:
-            accounts_to_process = [acc for acc in all_accounts if acc["id"] in account_ids]
-        else:
-            accounts_to_process = all_accounts
+        try:
+            all_accounts = await TelegramAccountModel.list_by_user(user_id)
+            if account_ids:
+                accounts_to_process = [acc for acc in all_accounts if acc["id"] in account_ids]
+            else:
+                accounts_to_process = all_accounts
 
-        if not accounts_to_process:
-            return [{"status": "error", "message": "Tidak ada akun Telegram yang tersedia"}]
+            if not accounts_to_process:
+                return [{"status": "error", "message": "Tidak ada akun Telegram yang tersedia"}]
 
-        for idx, acc in enumerate(accounts_to_process):
-            acc_id = acc["id"]
-            acc_name = acc.get("display_name") or acc.get("phone_number") or f"Akun #{acc_id}"
-            
-            # Ensure client is connected
-            client = self._active_clients.get(acc_id)
-            if not client or not client.is_connected():
-                connect_res = await self.connect_account(acc_id, user_id)
-                if connect_res.get("status") != "success":
-                    results.append({
-                        "account_id": acc_id,
-                        "name": acc_name,
-                        "status": "error",
-                        "message": f"Gagal menghubungkan akun: {connect_res.get('message')}"
-                    })
-                    continue
+            for idx, acc in enumerate(accounts_to_process):
+                # Check cancellation before each account
+                if self._is_cancelled(op_id):
+                    results.append({"status": "cancelled", "name": "—", "message": f"Proses dihentikan oleh pengguna ({idx}/{len(accounts_to_process)} selesai)"})
+                    break
+
+                acc_id = acc["id"]
+                acc_name = acc.get("display_name") or acc.get("phone_number") or f"Akun #{acc_id}"
+                
+                # Ensure client is connected
                 client = self._active_clients.get(acc_id)
+                if not client or not client.is_connected():
+                    connect_res = await self.connect_account(acc_id, user_id)
+                    if connect_res.get("status") != "success":
+                        results.append({
+                            "account_id": acc_id,
+                            "name": acc_name,
+                            "status": "error",
+                            "message": f"Gagal menghubungkan akun: {connect_res.get('message')}"
+                        })
+                        continue
+                    client = self._active_clients.get(acc_id)
 
-            # Execute group join
-            res = await self.join_group_single(client, target)
-            results.append({
-                "account_id": acc_id,
-                "name": acc_name,
-                "status": res["status"],
-                "message": res["message"]
-            })
+                # Execute group join
+                res = await self.join_group_single(client, target)
+                results.append({
+                    "account_id": acc_id,
+                    "name": acc_name,
+                    "status": res["status"],
+                    "message": res["message"]
+                })
 
-            # Safe delay before next account
-            if idx < len(accounts_to_process) - 1 and delay_seconds > 0:
-                await asyncio.sleep(delay_seconds)
+                # Safe delay before next account
+                if idx < len(accounts_to_process) - 1 and delay_seconds > 0:
+                    await self._interruptible_sleep(delay_seconds, op_id)
+        finally:
+            self._finish_operation(op_id)
 
         return results
 
@@ -557,61 +614,70 @@ class ClientManager:
     ) -> list[dict]:
         """Sends distributed message variations across user's active accounts to target group."""
         import random
+        op_id = f"send_msg_{uuid.uuid4().hex[:8]}"
+        self._start_operation(op_id, f"Kirim Pesan Grup: {group_link}")
         target = self._parse_group_target(group_link)
         results = []
 
-        all_accounts = await TelegramAccountModel.list_by_user(user_id)
-        if account_ids:
-            accounts_to_process = [acc for acc in all_accounts if acc["id"] in account_ids]
-        else:
-            accounts_to_process = all_accounts
-
-        if not accounts_to_process:
-            return [{"status": "error", "message": "Tidak ada akun Telegram yang tersedia"}]
-
-        clean_messages = [m.strip() for m in messages if m and m.strip()]
-        if not clean_messages:
-            clean_messages = ["Halo semua, salam kenal!"]
-
-        for idx, acc in enumerate(accounts_to_process):
-            acc_id = acc["id"]
-            acc_name = acc.get("display_name") or acc.get("phone_number") or f"Akun #{acc_id}"
-
-            # Select message variation
-            if distribution_mode == "round_robin":
-                selected_text = clean_messages[idx % len(clean_messages)]
+        try:
+            all_accounts = await TelegramAccountModel.list_by_user(user_id)
+            if account_ids:
+                accounts_to_process = [acc for acc in all_accounts if acc["id"] in account_ids]
             else:
-                selected_text = random.choice(clean_messages)
+                accounts_to_process = all_accounts
 
-            # Ensure client is connected
-            client = self._active_clients.get(acc_id)
-            if not client or not client.is_connected():
-                connect_res = await self.connect_account(acc_id, user_id)
-                if connect_res.get("status") != "success":
-                    results.append({
-                        "account_id": acc_id,
-                        "name": acc_name,
-                        "phone": acc.get("phone_number"),
-                        "text": selected_text,
-                        "status": "error",
-                        "message": f"Gagal menghubungkan akun: {connect_res.get('message')}"
-                    })
-                    continue
+            if not accounts_to_process:
+                return [{"status": "error", "message": "Tidak ada akun Telegram yang tersedia"}]
+
+            clean_messages = [m.strip() for m in messages if m and m.strip()]
+            if not clean_messages:
+                clean_messages = ["Halo semua, salam kenal!"]
+
+            for idx, acc in enumerate(accounts_to_process):
+                if self._is_cancelled(op_id):
+                    results.append({"status": "cancelled", "name": "—", "phone": "", "text": "", "message": f"Proses dihentikan oleh pengguna ({idx}/{len(accounts_to_process)} selesai)"})
+                    break
+
+                acc_id = acc["id"]
+                acc_name = acc.get("display_name") or acc.get("phone_number") or f"Akun #{acc_id}"
+
+                # Select message variation
+                if distribution_mode == "round_robin":
+                    selected_text = clean_messages[idx % len(clean_messages)]
+                else:
+                    selected_text = random.choice(clean_messages)
+
+                # Ensure client is connected
                 client = self._active_clients.get(acc_id)
+                if not client or not client.is_connected():
+                    connect_res = await self.connect_account(acc_id, user_id)
+                    if connect_res.get("status") != "success":
+                        results.append({
+                            "account_id": acc_id,
+                            "name": acc_name,
+                            "phone": acc.get("phone_number"),
+                            "text": selected_text,
+                            "status": "error",
+                            "message": f"Gagal menghubungkan akun: {connect_res.get('message')}"
+                        })
+                        continue
+                    client = self._active_clients.get(acc_id)
 
-            res = await self.send_group_message_single(client, target, selected_text, auto_join)
-            results.append({
-                "account_id": acc_id,
-                "name": acc_name,
-                "phone": acc.get("phone_number"),
-                "text": selected_text,
-                "status": res["status"],
-                "message": res["message"]
-            })
+                res = await self.send_group_message_single(client, target, selected_text, auto_join)
+                results.append({
+                    "account_id": acc_id,
+                    "name": acc_name,
+                    "phone": acc.get("phone_number"),
+                    "text": selected_text,
+                    "status": res["status"],
+                    "message": res["message"]
+                })
 
-            # Safe delay before next account
-            if idx < len(accounts_to_process) - 1 and delay_seconds > 0:
-                await asyncio.sleep(delay_seconds)
+                # Safe delay before next account
+                if idx < len(accounts_to_process) - 1 and delay_seconds > 0:
+                    await self._interruptible_sleep(delay_seconds, op_id)
+        finally:
+            self._finish_operation(op_id)
 
         return results
 
@@ -686,22 +752,30 @@ class ClientManager:
 
     async def check_all_accounts_health(self, user_id: int) -> list[dict]:
         """Runs health checks on all user accounts sequentially."""
+        op_id = f"health_{uuid.uuid4().hex[:8]}"
+        self._start_operation(op_id, "Cek Status @SpamBot Semua Akun")
         accounts = await TelegramAccountModel.list_by_user(user_id)
         results = []
-        for idx, acc in enumerate(accounts):
-            acc_id = acc["id"]
-            acc_name = acc.get("display_name") or acc.get("phone_number") or f"Akun #{acc_id}"
-            health = await self.check_account_health(acc_id, user_id)
-            results.append({
-                "account_id": acc_id,
-                "name": acc_name,
-                "phone": acc.get("phone_number"),
-                "status": health["status"],
-                "badge": health.get("badge", health["status"]),
-                "message": health["message"]
-            })
-            if idx < len(accounts) - 1:
-                await asyncio.sleep(2)
+        try:
+            for idx, acc in enumerate(accounts):
+                if self._is_cancelled(op_id):
+                    results.append({"account_id": 0, "name": "—", "phone": "", "status": "cancelled", "badge": "Dibatalkan", "message": f"Proses dihentikan ({idx}/{len(accounts)} selesai)"})
+                    break
+                acc_id = acc["id"]
+                acc_name = acc.get("display_name") or acc.get("phone_number") or f"Akun #{acc_id}"
+                health = await self.check_account_health(acc_id, user_id)
+                results.append({
+                    "account_id": acc_id,
+                    "name": acc_name,
+                    "phone": acc.get("phone_number"),
+                    "status": health["status"],
+                    "badge": health.get("badge", health["status"]),
+                    "message": health["message"]
+                })
+                if idx < len(accounts) - 1:
+                    await self._interruptible_sleep(2, op_id)
+        finally:
+            self._finish_operation(op_id)
         return results
 
     # ------------------ Telegram Login OTP Retrieval ------------------
@@ -977,26 +1051,34 @@ class ClientManager:
 
     async def check_all_accounts_2fa(self, user_id: int) -> list[dict]:
         """Runs 2FA check on all user accounts sequentially."""
+        op_id = f"2fa_{uuid.uuid4().hex[:8]}"
+        self._start_operation(op_id, "Cek 2FA Semua Akun")
         accounts = await TelegramAccountModel.list_by_user(user_id)
         results = []
-        for idx, acc in enumerate(accounts):
-            acc_id = acc["id"]
-            acc_name = acc.get("display_name") or acc.get("phone_number") or f"Akun #{acc_id}"
-            res = await self.check_account_2fa(acc_id, user_id)
-            results.append({
-                "account_id": acc_id,
-                "name": acc_name,
-                "phone": acc.get("phone_number"),
-                "has_2fa": res.get("has_2fa"),
-                "twofa_password": res.get("twofa_password"),
-                "twofa_status": res.get("twofa_status"),
-                "twofa_reset_until": res.get("twofa_reset_until"),
-                "hint": res.get("hint"),
-                "status": res.get("status"),
-                "message": res.get("message")
-            })
-            if idx < len(accounts) - 1:
-                await asyncio.sleep(1)
+        try:
+            for idx, acc in enumerate(accounts):
+                if self._is_cancelled(op_id):
+                    results.append({"account_id": 0, "name": "—", "phone": "", "status": "cancelled", "message": f"Proses dihentikan ({idx}/{len(accounts)} selesai)"})
+                    break
+                acc_id = acc["id"]
+                acc_name = acc.get("display_name") or acc.get("phone_number") or f"Akun #{acc_id}"
+                res = await self.check_account_2fa(acc_id, user_id)
+                results.append({
+                    "account_id": acc_id,
+                    "name": acc_name,
+                    "phone": acc.get("phone_number"),
+                    "has_2fa": res.get("has_2fa"),
+                    "twofa_password": res.get("twofa_password"),
+                    "twofa_status": res.get("twofa_status"),
+                    "twofa_reset_until": res.get("twofa_reset_until"),
+                    "hint": res.get("hint"),
+                    "status": res.get("status"),
+                    "message": res.get("message")
+                })
+                if idx < len(accounts) - 1:
+                    await self._interruptible_sleep(1, op_id)
+        finally:
+            self._finish_operation(op_id)
         return results
 
     # ------------------ Session Export & Import ------------------
@@ -1099,81 +1181,90 @@ class ClientManager:
         delay_seconds: int = 3
     ) -> list[dict]:
         """Batch updates profile name, bio, and avatar for selected accounts."""
+        op_id = f"profile_{uuid.uuid4().hex[:8]}"
+        self._start_operation(op_id, "Update Profil Massal")
         results = []
-        all_accounts = await TelegramAccountModel.list_by_user(user_id)
-        if account_ids:
-            accounts_to_process = [acc for acc in all_accounts if acc["id"] in account_ids]
-        else:
-            accounts_to_process = all_accounts
+        try:
+            all_accounts = await TelegramAccountModel.list_by_user(user_id)
+            if account_ids:
+                accounts_to_process = [acc for acc in all_accounts if acc["id"] in account_ids]
+            else:
+                accounts_to_process = all_accounts
 
-        if not accounts_to_process:
-            return [{"status": "error", "message": "Tidak ada akun Telegram yang dipilih"}]
+            if not accounts_to_process:
+                return [{"status": "error", "message": "Tidak ada akun Telegram yang dipilih"}]
 
-        for idx, acc in enumerate(accounts_to_process):
-            acc_id = acc["id"]
-            acc_name = acc.get("display_name") or acc.get("phone_number") or f"Akun #{acc_id}"
+            for idx, acc in enumerate(accounts_to_process):
+                if self._is_cancelled(op_id):
+                    results.append({"account_id": 0, "name": "—", "status": "cancelled", "message": f"Proses dihentikan ({idx}/{len(accounts_to_process)} selesai)"})
+                    break
 
-            client = self._active_clients.get(acc_id)
-            if not client or not client.is_connected():
-                connect_res = await self.connect_account(acc_id, user_id)
-                if connect_res.get("status") != "success":
+                acc_id = acc["id"]
+                acc_name = acc.get("display_name") or acc.get("phone_number") or f"Akun #{acc_id}"
+
+                client = self._active_clients.get(acc_id)
+                if not client or not client.is_connected():
+                    connect_res = await self.connect_account(acc_id, user_id)
+                    if connect_res.get("status") != "success":
+                        results.append({
+                            "account_id": acc_id,
+                            "name": acc_name,
+                            "status": "error",
+                            "message": f"Gagal menghubungkan: {connect_res.get('message')}"
+                        })
+                        continue
+                    client = self._active_clients.get(acc_id)
+
+                try:
+                    actions_done = []
+                    # Update text profile (first_name, last_name, about)
+                    if first_name is not None or last_name is not None or about is not None:
+                        kwargs = {}
+                        if first_name is not None and first_name != "":
+                            kwargs["first_name"] = first_name
+                        if last_name is not None and last_name != "":
+                            kwargs["last_name"] = last_name
+                        if about is not None and about != "":
+                            kwargs["about"] = about[:70]
+
+                        if kwargs:
+                            await client(UpdateProfileRequest(**kwargs))
+                            new_display = f"{kwargs.get('first_name', acc.get('display_name', ''))} {kwargs.get('last_name', '')}".strip()
+                            if new_display:
+                                await TelegramAccountModel.update_display_name(acc_id, new_display)
+                            actions_done.append("Nama/Bio diubah")
+
+                    # Update photo if provided
+                    if photo_bytes:
+                        file = await client.upload_file(io.BytesIO(photo_bytes), file_name=photo_filename)
+                        await client(UploadProfilePhotoRequest(file=file))
+                        actions_done.append("Foto profil diperbarui")
+
+                    results.append({
+                        "account_id": acc_id,
+                        "name": acc_name,
+                        "status": "success",
+                        "message": ", ".join(actions_done) if actions_done else "Tidak ada perubahan profil"
+                    })
+                except FloodWaitError as e:
+                    results.append({
+                        "account_id": acc_id,
+                        "name": acc_name,
+                        "status": "flood_wait",
+                        "message": f"FloodWait: Tunggu {e.seconds} detik"
+                    })
+                except Exception as e:
                     results.append({
                         "account_id": acc_id,
                         "name": acc_name,
                         "status": "error",
-                        "message": f"Gagal menghubungkan: {connect_res.get('message')}"
+                        "message": str(e)
                     })
-                    continue
-                client = self._active_clients.get(acc_id)
 
-            try:
-                actions_done = []
-                # Update text profile (first_name, last_name, about)
-                if first_name is not None or last_name is not None or about is not None:
-                    kwargs = {}
-                    if first_name is not None and first_name != "":
-                        kwargs["first_name"] = first_name
-                    if last_name is not None and last_name != "":
-                        kwargs["last_name"] = last_name
-                    if about is not None and about != "":
-                        kwargs["about"] = about[:70]
-
-                    if kwargs:
-                        await client(UpdateProfileRequest(**kwargs))
-                        new_display = f"{kwargs.get('first_name', acc.get('display_name', ''))} {kwargs.get('last_name', '')}".strip()
-                        if new_display:
-                            await TelegramAccountModel.update_display_name(acc_id, new_display)
-                        actions_done.append("Nama/Bio diubah")
-
-                # Update photo if provided
-                if photo_bytes:
-                    file = await client.upload_file(io.BytesIO(photo_bytes), file_name=photo_filename)
-                    await client(UploadProfilePhotoRequest(file=file))
-                    actions_done.append("Foto profil diperbarui")
-
-                results.append({
-                    "account_id": acc_id,
-                    "name": acc_name,
-                    "status": "success",
-                    "message": ", ".join(actions_done) if actions_done else "Tidak ada perubahan profil"
-                })
-            except FloodWaitError as e:
-                results.append({
-                    "account_id": acc_id,
-                    "name": acc_name,
-                    "status": "flood_wait",
-                    "message": f"FloodWait: Tunggu {e.seconds} detik"
-                })
-            except Exception as e:
-                results.append({
-                    "account_id": acc_id,
-                    "name": acc_name,
-                    "status": "error",
-                    "message": str(e)
-                })
-
-            if idx < len(accounts_to_process) - 1 and delay_seconds > 0:
-                await asyncio.sleep(delay_seconds)
+                if idx < len(accounts_to_process) - 1 and delay_seconds > 0:
+                    await self._interruptible_sleep(delay_seconds, op_id)
+        finally:
+            self._finish_operation(op_id)
 
         return results
 
@@ -1187,7 +1278,8 @@ class ClientManager:
         delete_bots: bool = True,
         delete_pms: bool = False,
         max_dialogs: int = 100,
-        delay_chat: float = 0.8
+        delay_chat: float = 0.8,
+        op_id: Optional[str] = None
     ) -> dict:
         """Iterates through dialogs and deletes / leaves them based on filter settings."""
         stats = {
@@ -1203,6 +1295,9 @@ class ClientManager:
             dialogs = await client.get_dialogs(limit=max_dialogs)
 
             for dialog in dialogs:
+                if op_id and self._is_cancelled(op_id):
+                    break
+
                 should_delete = False
                 category = ""
 
@@ -1240,7 +1335,7 @@ class ClientManager:
                             stats["pms_deleted"] += 1
 
                         if delay_chat > 0:
-                            await asyncio.sleep(delay_chat)
+                            await self._interruptible_sleep(delay_chat, op_id)
                     except FloodWaitError as e:
                         return {
                             "status": "flood_wait",
@@ -1275,53 +1370,63 @@ class ClientManager:
         delay_account: int = 2
     ) -> list[dict]:
         """Cleans dialogs across specified or all user accounts."""
+        op_id = f"clean_{uuid.uuid4().hex[:8]}"
+        self._start_operation(op_id, "Bersihkan Chat Massal")
         results = []
-        all_accounts = await TelegramAccountModel.list_by_user(user_id)
-        if account_ids:
-            accounts_to_process = [acc for acc in all_accounts if acc["id"] in account_ids]
-        else:
-            accounts_to_process = all_accounts
+        try:
+            all_accounts = await TelegramAccountModel.list_by_user(user_id)
+            if account_ids:
+                accounts_to_process = [acc for acc in all_accounts if acc["id"] in account_ids]
+            else:
+                accounts_to_process = all_accounts
 
-        if not accounts_to_process:
-            return [{"status": "error", "message": "Tidak ada akun Telegram yang dipilih"}]
+            if not accounts_to_process:
+                return [{"status": "error", "message": "Tidak ada akun Telegram yang dipilih"}]
 
-        for idx, acc in enumerate(accounts_to_process):
-            acc_id = acc["id"]
-            acc_name = acc.get("display_name") or acc.get("phone_number") or f"Akun #{acc_id}"
+            for idx, acc in enumerate(accounts_to_process):
+                if self._is_cancelled(op_id):
+                    results.append({"account_id": 0, "name": "—", "status": "cancelled", "message": f"Proses dihentikan ({idx}/{len(accounts_to_process)} selesai)"})
+                    break
 
-            client = self._active_clients.get(acc_id)
-            if not client or not client.is_connected():
-                connect_res = await self.connect_account(acc_id, user_id)
-                if connect_res.get("status") != "success":
-                    results.append({
-                        "account_id": acc_id,
-                        "name": acc_name,
-                        "status": "error",
-                        "message": f"Gagal menghubungkan: {connect_res.get('message')}"
-                    })
-                    continue
+                acc_id = acc["id"]
+                acc_name = acc.get("display_name") or acc.get("phone_number") or f"Akun #{acc_id}"
+
                 client = self._active_clients.get(acc_id)
+                if not client or not client.is_connected():
+                    connect_res = await self.connect_account(acc_id, user_id)
+                    if connect_res.get("status") != "success":
+                        results.append({
+                            "account_id": acc_id,
+                            "name": acc_name,
+                            "status": "error",
+                            "message": f"Gagal menghubungkan: {connect_res.get('message')}"
+                        })
+                        continue
+                    client = self._active_clients.get(acc_id)
 
-            res = await self.clean_account_dialogs(
-                client=client,
-                leave_groups=leave_groups,
-                leave_channels=leave_channels,
-                delete_bots=delete_bots,
-                delete_pms=delete_pms,
-                max_dialogs=max_dialogs,
-                delay_chat=delay_chat
-            )
+                res = await self.clean_account_dialogs(
+                    client=client,
+                    leave_groups=leave_groups,
+                    leave_channels=leave_channels,
+                    delete_bots=delete_bots,
+                    delete_pms=delete_pms,
+                    max_dialogs=max_dialogs,
+                    delay_chat=delay_chat,
+                    op_id=op_id
+                )
 
-            results.append({
-                "account_id": acc_id,
-                "name": acc_name,
-                "status": res["status"],
-                "stats": res.get("stats"),
-                "message": res["message"]
-            })
+                results.append({
+                    "account_id": acc_id,
+                    "name": acc_name,
+                    "status": res["status"],
+                    "stats": res.get("stats"),
+                    "message": res["message"]
+                })
 
-            if idx < len(accounts_to_process) - 1 and delay_account > 0:
-                await asyncio.sleep(delay_account)
+                if idx < len(accounts_to_process) - 1 and delay_account > 0:
+                    await self._interruptible_sleep(delay_account, op_id)
+        finally:
+            self._finish_operation(op_id)
 
         return results
 
