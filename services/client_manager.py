@@ -12,7 +12,7 @@ from telethon import TelegramClient, password as pwd_mod
 from telethon.sessions import StringSession
 from telethon.tl.functions.channels import JoinChannelRequest
 from telethon.tl.functions.messages import ImportChatInviteRequest, CheckChatInviteRequest
-from telethon.tl.functions.account import UpdateProfileRequest, GetPasswordRequest, GetPasswordSettingsRequest, ResetPasswordRequest
+from telethon.tl.functions.account import UpdateProfileRequest, GetPasswordRequest, GetPasswordSettingsRequest, ResetPasswordRequest, DeclinePasswordResetRequest
 from telethon.tl.functions.contacts import GetContactsRequest, DeleteContactsRequest, ResetSavedRequest
 from telethon.tl.types import account as account_types, ChatInviteAlready, ChatInvite, InputUser
 from telethon.tl.functions.photos import UploadProfilePhotoRequest
@@ -1040,16 +1040,26 @@ class ClientManager:
             matched_pwd = None
             for cand in candidates:
                 try:
-                    check_srp = pwd_mod.compute_check(pwd, cand)
+                    # Ambil SRP challenge baru setiap percobaan karena Telegram meng-invalidasi srp_id setelah percobaan password yang salah
+                    pwd_cand = await client(GetPasswordRequest())
+                    check_srp = pwd_mod.compute_check(pwd_cand, cand)
                     await client(GetPasswordSettingsRequest(password=check_srp))
                     matched_pwd = cand
                     break
                 except PasswordHashInvalidError:
                     continue
                 except Exception:
-                    pass
+                    continue
 
             if matched_pwd:
+                # Jika akun sebelumnya memiliki pending reset tapi ternyata password cocok ("0707" / "7"),
+                # batalkan pending reset tersebut agar akun kembali normal
+                if pending_reset_date:
+                    try:
+                        await client(DeclinePasswordResetRequest())
+                    except Exception:
+                        pass
+
                 await TelegramAccountModel.update_2fa_status(
                     account_id=account_id,
                     has_2fa=True,
