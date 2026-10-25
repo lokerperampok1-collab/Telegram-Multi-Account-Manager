@@ -1368,8 +1368,59 @@ class ClientManager:
             if cleaned:
                 res = await self.import_session_string(user_id, cleaned)
                 results.append(res)
-                await asyncio.sleep(1)
+                await asyncio.sleep(0.5)
         return results
+
+    async def import_uploaded_sessions(self, user_id: int, files_data: list[tuple[str, bytes]]) -> dict:
+        """Parses and imports multiple uploaded session files (.session, .zip, .txt, .json)."""
+        from services.session_importer import extract_sessions_from_file
+
+        all_extracted = []
+        for filename, content in files_data:
+            extracted = extract_sessions_from_file(filename, content)
+            all_extracted.extend(extracted)
+
+        if not all_extracted:
+            return {
+                "status": "error",
+                "message": "Tidak ada sesi Telethon yang valid ditemukan di dalam file yang diunggah.",
+                "total_files": len(files_data),
+                "total_extracted": 0,
+                "results": []
+            }
+
+        # Deduplicate by session string preserving order
+        unique_sessions = []
+        seen = set()
+        for label, s in all_extracted:
+            if s not in seen:
+                seen.add(s)
+                unique_sessions.append((label, s))
+
+        results = []
+        success_count = 0
+        failed_count = 0
+
+        for label, s in unique_sessions:
+            res = await self.import_session_string(user_id, s)
+            res["source_file"] = label
+            if res.get("status") == "success":
+                success_count += 1
+            else:
+                failed_count += 1
+            results.append(res)
+            await asyncio.sleep(0.5)
+
+        return {
+            "status": "success",
+            "total_files": len(files_data),
+            "total_extracted": len(all_extracted),
+            "unique_sessions": len(unique_sessions),
+            "success_count": success_count,
+            "failed_count": failed_count,
+            "results": results,
+            "message": f"Selesai mengimpor {len(unique_sessions)} sesi ({success_count} berhasil, {failed_count} gagal)."
+        }
 
     # ------------------ Mass Profile Update ------------------
 

@@ -772,11 +772,230 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // ------------------- IMPORT SESSION FLOW -------------------
+  // ------------------- UPLOAD & IMPORT SESSION FLOW -------------------
 
+  // Tab Switching (Upload Files vs Paste Text)
+  const tabUploadBtn = document.getElementById('tab-upload-files-btn');
+  const tabPasteBtn = document.getElementById('tab-paste-text-btn');
+  const paneUpload = document.getElementById('pane-upload-files');
+  const panePaste = document.getElementById('pane-paste-text');
+
+  if (tabUploadBtn && tabPasteBtn && paneUpload && panePaste) {
+    tabUploadBtn.addEventListener('click', () => {
+      tabUploadBtn.classList.add('active');
+      tabPasteBtn.classList.remove('active');
+      paneUpload.style.display = 'block';
+      panePaste.style.display = 'none';
+    });
+
+    tabPasteBtn.addEventListener('click', () => {
+      tabPasteBtn.classList.add('active');
+      tabUploadBtn.classList.remove('active');
+      panePaste.style.display = 'block';
+      paneUpload.style.display = 'none';
+    });
+  }
+
+  // Multiple File Upload Controller
+  let selectedSessionFiles = [];
+  const sessionDropzone = document.getElementById('session-dropzone');
+  const fileInput = document.getElementById('upload-sessions-file-input');
+  const browseBtn = document.getElementById('btn-browse-session-files');
+  const filesSummary = document.getElementById('selected-files-summary');
+  const filesCount = document.getElementById('selected-files-count');
+  const filesList = document.getElementById('selected-files-list');
+  const clearFilesBtn = document.getElementById('btn-clear-selected-files');
+  const startUploadBtn = document.getElementById('start-upload-sessions-btn');
+  const importResults = document.getElementById('import-results');
+
+  function formatBytes(bytes) {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+  }
+
+  function updateSelectedFilesUI() {
+    if (!filesSummary || !filesCount || !filesList || !startUploadBtn) return;
+
+    if (selectedSessionFiles.length === 0) {
+      filesSummary.style.display = 'none';
+      startUploadBtn.disabled = true;
+      startUploadBtn.innerHTML = '<span>🚀 Unggah & Hubungkan Semua Sesi</span>';
+      return;
+    }
+
+    filesSummary.style.display = 'block';
+    startUploadBtn.disabled = false;
+    const totalBytes = selectedSessionFiles.reduce((acc, f) => acc + f.size, 0);
+    filesCount.textContent = `${selectedSessionFiles.length} File Dipilih (${formatBytes(totalBytes)})`;
+    startUploadBtn.innerHTML = `<span>🚀 Unggah & Hubungkan ${selectedSessionFiles.length} File Sesi</span>`;
+
+    filesList.innerHTML = selectedSessionFiles.map((f, idx) => `
+      <div class="selected-file-chip">
+        <span class="file-name" title="${escapeHtml(f.name)}">📄 ${escapeHtml(f.name)}</span>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span class="file-size">${formatBytes(f.size)}</span>
+          <button type="button" class="btn-clean-files" onclick="window.removeSelectedSessionFile(${idx})" title="Hapus file ini" style="font-size: 0.9rem;">✕</button>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  window.removeSelectedSessionFile = function(index) {
+    if (index >= 0 && index < selectedSessionFiles.length) {
+      selectedSessionFiles.splice(index, 1);
+      updateSelectedFilesUI();
+    }
+  };
+
+  if (clearFilesBtn) {
+    clearFilesBtn.addEventListener('click', () => {
+      selectedSessionFiles = [];
+      if (fileInput) fileInput.value = '';
+      updateSelectedFilesUI();
+    });
+  }
+
+  if (browseBtn && fileInput) {
+    browseBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      fileInput.click();
+    });
+  }
+
+  if (sessionDropzone && fileInput) {
+    sessionDropzone.addEventListener('click', () => {
+      fileInput.click();
+    });
+
+    sessionDropzone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      sessionDropzone.classList.add('dragover');
+    });
+
+    sessionDropzone.addEventListener('dragenter', (e) => {
+      e.preventDefault();
+      sessionDropzone.classList.add('dragover');
+    });
+
+    sessionDropzone.addEventListener('dragleave', (e) => {
+      e.preventDefault();
+      sessionDropzone.classList.remove('dragover');
+    });
+
+    sessionDropzone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      sessionDropzone.classList.remove('dragover');
+      if (e.dataTransfer && e.dataTransfer.files) {
+        addFilesToList(Array.from(e.dataTransfer.files));
+      }
+    });
+
+    fileInput.addEventListener('change', (e) => {
+      if (e.target.files) {
+        addFilesToList(Array.from(e.target.files));
+      }
+    });
+  }
+
+  function addFilesToList(newFiles) {
+    for (const f of newFiles) {
+      // Cek duplikat berdasarkan nama dan ukuran
+      const exists = selectedSessionFiles.some(existing => existing.name === f.name && existing.size === f.size);
+      if (!exists) {
+        selectedSessionFiles.push(f);
+      }
+    }
+    updateSelectedFilesUI();
+  }
+
+  // Upload and process files
+  if (startUploadBtn && importResults) {
+    startUploadBtn.addEventListener('click', async () => {
+      if (selectedSessionFiles.length === 0) {
+        showToast('Pilih minimal satu file sesi Telethon', 'error');
+        return;
+      }
+
+      startUploadBtn.disabled = true;
+      startUploadBtn.innerHTML = `<div class="spinner"></div> Mengunggah & Memproses ${selectedSessionFiles.length} File Sesi...`;
+      importResults.style.display = 'flex';
+      importResults.innerHTML = '<div style="color: var(--accent-cyan); padding: 12px;"><div class="spinner" style="display:inline-block; width:14px; height:14px;"></div> Membaca sesi, memverifikasi otorisasi akun Telegram, dan menyimpan ke database...</div>';
+
+      const formData = new FormData();
+      for (const file of selectedSessionFiles) {
+        formData.append('files', file);
+      }
+
+      try {
+        const token = localStorage.getItem('token');
+        const headers = {};
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+
+        const res = await fetch('/api/accounts/upload-sessions', {
+          method: 'POST',
+          headers: headers,
+          body: formData
+        });
+        const data = await res.json();
+
+        if (res.ok && data.results) {
+          const successCount = data.success_count || 0;
+          const failedCount = data.failed_count || 0;
+
+          let html = `
+            <div style="padding: 10px 12px; background: rgba(0, 212, 255, 0.08); border-radius: 8px; margin-bottom: 10px; border: 1px solid rgba(0, 212, 255, 0.2);">
+              <strong style="color: var(--accent-cyan);">${data.message || 'Proses Selesai'}</strong>
+              <div style="font-size: 0.78rem; color: var(--text-secondary); margin-top: 4px;">
+                File: <strong>${data.total_files}</strong> | Sesi Ditemukan: <strong>${data.total_extracted}</strong> | Berhasil: <strong style="color: var(--accent-green);">${successCount}</strong> | Gagal: <strong style="color: var(--accent-rose);">${failedCount}</strong>
+              </div>
+            </div>
+          `;
+
+          html += data.results.map(r => {
+            const isOk = r.status === 'success';
+            const sourceLabel = r.source_file ? `<span style="font-size: 0.72rem; color: var(--accent-cyan); margin-left: 6px;">[${escapeHtml(r.source_file)}]</span>` : '';
+            return `
+              <div class="bulk-item">
+                <div>
+                  <span class="bulk-item-phone">${escapeHtml(r.name || r.phone || 'Sesi Akun')}</span>${sourceLabel}
+                  <div style="font-size: 0.75rem; color: var(--text-muted);">${escapeHtml(r.message || '')}</div>
+                </div>
+                <div>
+                  <span class="badge-status ${isOk ? 'success' : 'error'}">${isOk ? 'Berhasil' : 'Gagal'}</span>
+                </div>
+              </div>
+            `;
+          }).join('');
+
+          importResults.innerHTML = html;
+          showToast(`Selesai: ${successCount} akun berhasil diimpor, ${failedCount} gagal`, successCount > 0 ? 'success' : 'warning');
+
+          // Reset file list on success
+          selectedSessionFiles = [];
+          if (fileInput) fileInput.value = '';
+          updateSelectedFilesUI();
+
+          if (window.loadAccounts) window.loadAccounts();
+        } else {
+          importResults.innerHTML = `<div style="color: var(--accent-rose); padding: 10px;">⚠️ ${escapeHtml(data.detail || data.message || 'Gagal mengunggah file sesi')}</div>`;
+          showToast(data.detail || data.message || 'Gagal mengunggah sesi', 'error');
+        }
+      } catch (err) {
+        importResults.innerHTML = '<div style="color: var(--accent-rose); padding: 10px;">⚠️ Koneksi ke server gagal atau terputus</div>';
+        showToast('Koneksi server gagal', 'error');
+      } finally {
+        startUploadBtn.disabled = false;
+        startUploadBtn.innerHTML = '<span>🚀 Unggah & Hubungkan Semua Sesi</span>';
+      }
+    });
+  }
+
+  // Paste Text StringSession Handler
   const startImportBtn = document.getElementById('start-import-btn');
   const importTextarea = document.getElementById('import-sessions-text');
-  const importResults = document.getElementById('import-results');
 
   if (startImportBtn && importTextarea && importResults) {
     startImportBtn.addEventListener('click', async () => {
@@ -811,8 +1030,8 @@ document.addEventListener('DOMContentLoaded', () => {
             return `
               <div class="bulk-item">
                 <div>
-                  <span class="bulk-item-phone">${r.name || r.phone || 'Sesi'}</span>
-                  <div style="font-size: 0.75rem; color: var(--text-muted);">${r.message}</div>
+                  <span class="bulk-item-phone">${escapeHtml(r.name || r.phone || 'Sesi')}</span>
+                  <div style="font-size: 0.75rem; color: var(--text-muted);">${escapeHtml(r.message || '')}</div>
                 </div>
                 <div>
                   <span class="badge-status ${isOk ? 'success' : 'error'}">${isOk ? 'Berhasil' : 'Gagal'}</span>
@@ -824,13 +1043,13 @@ document.addEventListener('DOMContentLoaded', () => {
           importTextarea.value = '';
           if (window.loadAccounts) window.loadAccounts();
         } else {
-          importResults.innerHTML = `<div style="color: var(--accent-rose); padding: 8px;">${data.detail || 'Gagal import sesi'}</div>`;
+          importResults.innerHTML = `<div style="color: var(--accent-rose); padding: 8px;">${escapeHtml(data.detail || 'Gagal import sesi')}</div>`;
         }
       } catch (e) {
         showToast('Koneksi server gagal', 'error');
       } finally {
         startImportBtn.disabled = false;
-        startImportBtn.innerHTML = '<span>📥 Mulai Import Sesi</span>';
+        startImportBtn.innerHTML = '<span>📥 Mulai Import StringSession</span>';
       }
     });
   }

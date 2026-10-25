@@ -169,6 +169,27 @@ async def import_sessions(req: ImportSessionsRequest, current_user: dict = Depen
     results = await client_manager.import_bulk_sessions(current_user["id"], req.sessions)
     return {"status": "success", "results": results}
 
+@router.post("/upload-sessions")
+async def upload_sessions(
+    files: list[UploadFile] = File(...),
+    current_user: dict = Depends(get_current_user)
+):
+    """Uploads one or multiple Telethon session files (.session, .zip, .txt, .json) and imports them."""
+    if not files:
+        raise HTTPException(status_code=400, detail="Tidak ada file yang diunggah")
+
+    files_data = []
+    for f in files:
+        content = await f.read()
+        if content:
+            files_data.append((f.filename or "unknown.session", content))
+
+    if not files_data:
+        raise HTTPException(status_code=400, detail="File yang diunggah kosong")
+
+    res = await client_manager.import_uploaded_sessions(current_user["id"], files_data)
+    return res
+
 # ----------------- Mass Profile Manager -----------------
 
 @router.post("/update-profile")

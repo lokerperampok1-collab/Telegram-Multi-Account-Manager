@@ -82,7 +82,7 @@
             <polyline points="7 10 12 15 17 10"></polyline>
             <line x1="12" y1="15" x2="12" y2="3"></line>
           </svg>
-          <span class="nav-text">Import StringSession</span>
+          <span class="nav-text">Upload / Import Sesi</span>
         </button>
 
         <div class="nav-section-label">OTOMASI MASSAL</div>
@@ -452,28 +452,74 @@
           </div>
         </div>
 
-        <!-- VIEW 5: IMPORT STRINGSESSION -->
+        <!-- VIEW 5: UPLOAD & IMPORT SESI TELETHON -->
         <div class="view-panel" id="view-import">
           <div class="tool-card-lux glass-panel">
             <div class="tool-header-lux">
               <div class="tool-icon-circle">📥</div>
               <div>
-                <h3 class="tool-title">Import StringSession Telethon</h3>
-                <p class="tool-subtitle">Tempel StringSession untuk langsung menghubungkan akun tanpa OTP / QR</p>
+                <h3 class="tool-title">Upload & Import Sesi Telethon</h3>
+                <p class="tool-subtitle">Unggah file sesi (.session / .zip) atau tempel StringSession untuk langsung menghubungkan akun massal</p>
               </div>
             </div>
 
             <div class="tool-body-lux">
-              <div class="form-group">
-                <label class="form-label" for="import-sessions-text">StringSession Telegram (Satu per baris)</label>
-                <textarea id="import-sessions-text" class="form-textarea" rows="6" placeholder="1BJWap1wBu7...&#10;1BJWap2xCu8..."></textarea>
-                <div class="form-help">Jika session milik nomor yang sudah terdaftar, sistem otomatis memperbarui sesi tanpa membuat kartu dobel.</div>
+              <!-- Mode Tabs -->
+              <div class="session-tab-bar">
+                <button class="session-tab-btn active" id="tab-upload-files-btn" type="button">
+                  📁 Unggah File (.session / .zip)
+                </button>
+                <button class="session-tab-btn" id="tab-paste-text-btn" type="button">
+                  📝 Tempel StringSession (Teks)
+                </button>
               </div>
 
-              <button class="btn btn-primary" style="width: 100%;" id="start-import-btn">
-                <span>📥 Mulai Import Sesi</span>
-              </button>
+              <!-- PANE 1: Upload File Sesi (.session / .zip / .txt) -->
+              <div id="pane-upload-files" class="session-import-pane">
+                <div class="upload-dropzone" id="session-dropzone">
+                  <input type="file" id="upload-sessions-file-input" multiple accept=".session,.zip,.txt,.json" style="display: none;">
+                  <div class="dropzone-icon">
+                    <svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                      <polyline points="17 8 12 3 7 8"></polyline>
+                      <line x1="12" y1="3" x2="12" y2="15"></line>
+                    </svg>
+                  </div>
+                  <div class="dropzone-title">Seret & Lepas File Sesi di Sini</div>
+                  <div class="dropzone-desc">Mendukung upload banyak file sekaligus: file <strong>.session</strong> (Telethon SQLite), arsip <strong>.zip</strong> (kumpulan banyak sesi), atau <strong>.txt</strong></div>
+                  <button type="button" class="btn btn-secondary btn-sm" id="btn-browse-session-files" style="margin-top: 12px;">
+                    📂 Pilih File Sesi
+                  </button>
+                </div>
 
+                <!-- Selected Files Summary -->
+                <div id="selected-files-summary" class="selected-files-box" style="display: none;">
+                  <div class="selected-files-header">
+                    <span id="selected-files-count" style="font-weight: 600; color: var(--accent-cyan);">0 File Dipilih</span>
+                    <button type="button" class="btn-clean-files" id="btn-clear-selected-files" title="Bersihkan daftar file">✕ Hapus Semua</button>
+                  </div>
+                  <div id="selected-files-list" class="selected-files-list"></div>
+                </div>
+
+                <button class="btn btn-primary" style="width: 100%; margin-top: 16px;" id="start-upload-sessions-btn" disabled>
+                  <span>🚀 Unggah & Hubungkan Semua Sesi</span>
+                </button>
+              </div>
+
+              <!-- PANE 2: Paste StringSession Textarea -->
+              <div id="pane-paste-text" class="session-import-pane" style="display: none;">
+                <div class="form-group">
+                  <label class="form-label" for="import-sessions-text">StringSession Telegram (Satu per baris)</label>
+                  <textarea id="import-sessions-text" class="form-textarea" rows="6" placeholder="1BJWap1wBu7...&#10;1BJWap2xCu8..."></textarea>
+                  <div class="form-help">Jika session milik nomor yang sudah terdaftar, sistem otomatis memperbarui sesi tanpa membuat kartu dobel.</div>
+                </div>
+
+                <button class="btn btn-primary" style="width: 100%;" id="start-import-btn">
+                  <span>📥 Mulai Import StringSession</span>
+                </button>
+              </div>
+
+              <!-- Results / Progress Box -->
               <div id="import-results" class="bulk-status-box" style="display: none; margin-top: 16px;"></div>
             </div>
           </div>
