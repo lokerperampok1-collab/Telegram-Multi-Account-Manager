@@ -1081,7 +1081,107 @@ class ClientManager:
                     "message": f"2FA Aktif - Password Cocok: '{matched_pwd}'"
                 }
 
-            # Neither "0707" nor "7" matched -> Reset 2FA and wait 7 days
+            # Neither "0707" nor "7" matched.
+            # JANGAN LANGSUNG RESET! Cek apakah sudah ada pending_reset_date dari Telegram sebelumnya
+            if pending_reset_date:
+                reset_until_str = pending_reset_date.strftime("%Y-%m-%d %H:%M:%S")
+                await TelegramAccountModel.update_2fa_status(
+                    account_id=account_id,
+                    has_2fa=True,
+                    hint=hint,
+                    twofa_password=None,
+                    twofa_status="reset_pending",
+                    twofa_reset_until=reset_until_str
+                )
+                return {
+                    "status": "success",
+                    "account_id": account_id,
+                    "phone_number": account.get("phone_number"),
+                    "display_name": account.get("display_name"),
+                    "has_2fa": True,
+                    "twofa_password": None,
+                    "twofa_status": "reset_pending",
+                    "twofa_reset_until": reset_until_str,
+                    "hint": hint,
+                    "message": f"Password salah (bukan 0707 / 7). Sedang menunggu reset: {reset_until_str}."
+                }
+
+            # Password bukan 0707 / 7 dan belum di-reset
+            await TelegramAccountModel.update_2fa_status(
+                account_id=account_id,
+                has_2fa=True,
+                hint=hint,
+                twofa_password=None,
+                twofa_status="mismatch",
+                twofa_reset_until=None
+            )
+
+            return {
+                "status": "success",
+                "account_id": account_id,
+                "phone_number": account.get("phone_number"),
+                "display_name": account.get("display_name"),
+                "has_2fa": True,
+                "twofa_password": None,
+                "twofa_status": "mismatch",
+                "twofa_reset_until": None,
+                "hint": hint,
+                "message": "Password tidak cocok (bukan 0707 atau 7). Gunakan tombol Reset jika ingin mereset 2FA."
+            }
+        except (UserDeactivatedError, UserDeactivatedBanError, AuthKeyUnregisteredError):
+            await TelegramAccountModel.update_status(account_id, False)
+            return {"status": "error", "message": "Akun Telegram telah dinonaktifkan / di-banned"}
+        except FloodWaitError as e:
+            return {"status": "error", "message": f"Terkena FloodWait Telegram, tunggu {e.seconds} detik."}
+        except Exception as e:
+            return {"status": "error", "message": f"Gagal mengecek status 2FA: {str(e)}"}
+
+    async def reset_account_2fa(self, account_id: int, user_id: int) -> dict:
+        """Explicitly requests a 2FA password reset from Telegram for an account."""
+        account = await TelegramAccountModel.get_by_id(account_id, user_id)
+        if not account:
+            return {"status": "error", "message": "Akun tidak ditemukan"}
+
+        client = self._active_clients.get(account_id)
+        if not client or not client.is_connected():
+            connect_res = await self.connect_account(account_id, user_id)
+            if connect_res.get("status") != "success":
+                return {
+                    "status": "error",
+                    "message": f"Gagal menghubungkan sesi akun: {connect_res.get('message', 'Sesi mati / kedaluwarsa')}"
+                }
+            client = self._active_clients.get(account_id)
+
+        try:
+            if not await client.is_user_authorized():
+                await TelegramAccountModel.update_status(account_id, False)
+                return {"status": "error", "message": "Sesi tidak terotorisasi atau sudah kedaluwarsa"}
+
+            pwd = await client(GetPasswordRequest())
+            if not pwd.has_password:
+                await TelegramAccountModel.update_2fa_status(
+                    account_id=account_id,
+                    has_2fa=False,
+                    hint=None,
+                    twofa_password=None,
+                    twofa_status="no_2fa",
+                    twofa_reset_until=None
+                )
+                return {
+                    "status": "success",
+                    "account_id": account_id,
+                    "phone_number": account.get("phone_number"),
+                    "display_name": account.get("display_name"),
+                    "has_2fa": False,
+                    "twofa_password": None,
+                    "twofa_status": "no_2fa",
+                    "twofa_reset_until": None,
+                    "message": "Akun tidak memiliki password 2FA (Tanpa 2FA)."
+                }
+
+            hint = getattr(pwd, 'hint', None)
+            pending_reset_date = getattr(pwd, 'pending_reset_date', None)
+
             reset_until_str = None
             if pending_reset_date:
                 reset_until_str = pending_reset_date.strftime("%Y-%m-%d %H:%M:%S")
@@ -1143,7 +1243,7 @@ class ClientManager:
                 "twofa_status": "reset_pending",
                 "twofa_reset_until": reset_until_str,
                 "hint": hint,
-                "message": f"Password salah (bukan 0707 / 7). 2FA di-reset: Menunggu 7 hari ({reset_until_str})."
+                "message": f"Reset 2FA berhasil diajukan ke Telegram: Menunggu 7 hari ({reset_until_str})."
             }
         except (UserDeactivatedError, UserDeactivatedBanError, AuthKeyUnregisteredError):
             await TelegramAccountModel.update_status(account_id, False)
@@ -1151,7 +1251,7 @@ class ClientManager:
         except FloodWaitError as e:
             return {"status": "error", "message": f"Terkena FloodWait Telegram, tunggu {e.seconds} detik."}
         except Exception as e:
-            return {"status": "error", "message": f"Gagal mengecek status 2FA: {str(e)}"}
+            return {"status": "error", "message": f"Gagal mereset 2FA: {str(e)}"}
 
     async def check_all_accounts_2fa(self, user_id: int) -> list[dict]:
         """Runs 2FA check on all user accounts sequentially."""

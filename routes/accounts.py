@@ -114,6 +114,12 @@ async def check_account_2fa(account_id: int, current_user: dict = Depends(get_cu
     res = await client_manager.check_account_2fa(account_id, current_user["id"])
     return res
 
+@router.post("/{account_id}/reset-2fa")
+async def reset_account_2fa(account_id: int, current_user: dict = Depends(get_current_user)):
+    """Explicitly requests a 2FA reset from Telegram for an account."""
+    res = await client_manager.reset_account_2fa(account_id, current_user["id"])
+    return res
+
 @router.post("/check-2fa-all")
 async def check_all_2fa(current_user: dict = Depends(get_current_user)):
     """Checks Two-Step Verification (2FA) for all user accounts sequentially."""

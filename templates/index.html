@@ -290,6 +290,7 @@
               <select id="account-2fa-filter" class="filter-select" title="Filter Status 2FA">
                 <option value="all">Semua (2FA)</option>
                 <option value="matched">🔒 Pass Cocok (0707 / 7)</option>
+                <option value="mismatch">❌ Bukan 0707/7 (Belum Reset)</option>
                 <option value="reset_pending">⏳ Menunggu Reset (7 Hari)</option>
                 <option value="enabled">🔒 Ada 2FA (Semua)</option>
                 <option value="disabled">🔓 Tanpa 2FA</option>
@@ -924,7 +925,7 @@ Halo semuanya, selamat beraktivitas ya</textarea>
               <span>🔒 KATA SANDI 2FA (CLOUD PASSWORD)</span>
             </div>
             <button class="btn-check-2fa-inline" id="otp-check-2fa-inline-btn" title="Cek / Verifikasi ulang sandi 2FA akun ini">
-              🔄 Cek / Reset 2FA
+              🔄 Cek 2FA
             </button>
           </div>
           <div class="otp-2fa-content" id="otp-2fa-content">
@@ -936,6 +937,9 @@ Halo semuanya, selamat beraktivitas ya</textarea>
                   <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
                 </svg>
                 <span id="copy-2fa-btn-text">Salin 2FA</span>
+              </button>
+              <button class="btn btn-danger btn-sm" id="otp-reset-2fa-inline-btn" title="Ajukan Reset Kata Sandi 2FA ke Telegram (Tunggu 7 Hari)" style="display: none;">
+                ⚠️ Reset 2FA (7 Hari)
               </button>
             </div>
             <div class="otp-2fa-subtext" id="otp-2fa-subtext"></div>

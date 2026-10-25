@@ -372,6 +372,13 @@ function get2FaBadgeHtml(acc) {
     const until = acc.twofa_reset_until || '7 hari';
     return `<span style="color: var(--accent-amber); font-weight: 600;" title="Password salah (bukan 0707/7). Menunggu reset sampai: ${escapeHtml(until)}">⏳ Reset (7 Hari)</span>`;
   }
+  if (acc.twofa_status === 'mismatch') {
+    const hintStr = acc.twofa_hint ? ` | Hint: ${escapeHtml(acc.twofa_hint)}` : '';
+    return `<span style="display: inline-flex; align-items: center; gap: 5px;">
+      <span style="color: var(--accent-rose); font-weight: 600;" title="Password bukan 0707 atau 7${hintStr}">❌ Bukan 0707/7</span>
+      <button class="btn-xs-reset" onclick="event.stopPropagation(); promptReset2FA(${acc.id}, '${escapeHtml(acc.phone_number || '')}')" title="Klik untuk mengajukan Reset 2FA">Reset</button>
+    </span>`;
+  }
   if (acc.has_2fa === 1 || acc.has_2fa === true) {
     const hintStr = acc.twofa_hint ? ` (Hint: ${escapeHtml(acc.twofa_hint)})` : '';
     return `<span style="color: var(--accent-green); font-weight: 600;" title="2FA Aktif${hintStr}">🔒 2FA Aktif</span>`;
@@ -381,6 +388,34 @@ function get2FaBadgeHtml(acc) {
   }
   return `<span style="color: var(--accent-cyan); font-weight: 500;" title="Klik untuk cek status 2FA">🔍 Cek 2FA</span>`;
 }
+
+window.promptReset2FA = async function(accountId, phoneNumber) {
+  const phoneLabel = phoneNumber ? ` (+${phoneNumber.replace(/^\+/, '')})` : '';
+  if (!confirm(`⚠️ Konfirmasi Reset 2FA:\n\nApakah Anda yakin ingin mengajukan RESET kata sandi 2FA untuk akun ini${phoneLabel}?\n\nTelegram akan menerapkan masa tunggu (biasanya 7 hari) sebelum kata sandi 2FA dicopot.`)) {
+    return;
+  }
+
+  showToast('Mengajukan reset 2FA ke Telegram...', 'info');
+  try {
+    const res = await fetch(`/api/accounts/${accountId}/reset-2fa`, {
+      method: 'POST',
+      headers: getAuthHeaders()
+    });
+    const data = await res.json();
+    if (res.ok && data.status === 'success') {
+      showToast(data.message || 'Reset 2FA berhasil diajukan', 'warning');
+      const cardBadge = document.getElementById(`twofa-badge-${accountId}`);
+      if (cardBadge) cardBadge.innerHTML = get2FaBadgeHtml(data);
+      if (currentOtpAccountId === accountId) {
+        renderOtpModal2fa(data);
+      }
+    } else {
+      showToast(data.message || data.detail || 'Gagal mengajukan reset 2FA', 'error');
+    }
+  } catch (err) {
+    showToast('Koneksi server gagal', 'error');
+  }
+};
 
 async function checkAccount2FA(accountId) {
   const badge = document.getElementById(`twofa-badge-${accountId}`);
@@ -424,7 +459,7 @@ async function checkAllAccounts2FA() {
   if (window.OperationManager) {
     window.OperationManager.setRunning('Cek Status 2FA Semua Akun', 'accounts-cancel-btn');
   }
-  showToast('Memeriksa 2FA (mencocokkan 0707 / 7 dan reset jika salah)...', 'info');
+  showToast('Memeriksa 2FA akun (mencocokkan 0707 / 7)...', 'info');
 
   try {
     const res = await fetch('/api/accounts/check-2fa-all', {
@@ -436,6 +471,7 @@ async function checkAllAccounts2FA() {
     if (res.ok && data.results) {
       let countMatched = 0;
       let countReset = 0;
+      let countMismatch = 0;
       let countNo2fa = 0;
 
       data.results.forEach(r => {
@@ -445,6 +481,7 @@ async function checkAllAccounts2FA() {
             badge.innerHTML = get2FaBadgeHtml(r);
             if (r.twofa_password) countMatched++;
             else if (r.twofa_status === 'reset_pending') countReset++;
+            else if (r.twofa_status === 'mismatch') countMismatch++;
             else if (!r.has_2fa) countNo2fa++;
           } else if (r.status === 'cancelled') {
             badge.innerHTML = '<span style="color: var(--accent-amber);">⛔ Dibatalkan</span>';
@@ -453,7 +490,7 @@ async function checkAllAccounts2FA() {
           }
         }
       });
-      showToast(`Pengecekan selesai (${data.results.length} akun): ${countMatched} sandi cocok, ${countReset} reset 7 hari, ${countNo2fa} tanpa 2FA`, 'success');
+      showToast(`Pengecekan selesai (${data.results.length} akun): ${countMatched} cocok, ${countMismatch} bukan 0707/7, ${countReset} reset 7 hari, ${countNo2fa} tanpa 2FA`, 'success');
     } else {
       showToast(data.detail || 'Gagal memeriksa status 2FA', 'error');
     }
@@ -762,6 +799,14 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  const reset2faInlineBtn = document.getElementById('otp-reset-2fa-inline-btn');
+  if (reset2faInlineBtn) {
+    reset2faInlineBtn.addEventListener('click', () => {
+      if (!currentOtpAccountId) return;
+      promptReset2FA(currentOtpAccountId, currentOtpPhone);
+    });
+  }
+
   const check2faInlineBtn = document.getElementById('otp-check-2fa-inline-btn');
   if (check2faInlineBtn) {
     check2faInlineBtn.addEventListener('click', async () => {
@@ -769,7 +814,9 @@ document.addEventListener('DOMContentLoaded', () => {
       const displayEl = document.getElementById('otp-2fa-badge-display');
       const subtextEl = document.getElementById('otp-2fa-subtext');
       const copyBtn = document.getElementById('copy-2fa-btn');
-      if (displayEl) displayEl.innerHTML = '<div class="spinner" style="width:12px;height:12px;display:inline-block;"></div> Memeriksa / Reset 2FA...';
+      const resetBtn = document.getElementById('otp-reset-2fa-inline-btn');
+      if (resetBtn) resetBtn.style.display = 'none';
+      if (displayEl) displayEl.innerHTML = '<div class="spinner" style="width:12px;height:12px;display:inline-block;"></div> Memeriksa 2FA...';
       try {
         const res = await fetch(`/api/accounts/${currentOtpAccountId}/check-2fa`, {
           method: 'POST',
@@ -804,6 +851,7 @@ function escapeHtml(str) {
 
 // ==================== TELEGRAM OTP MODAL CONTROLLER ====================
 let currentOtpAccountId = null;
+let currentOtpPhone = null;
 let otpPollingTimer = null;
 let currentExtractedOtp = null;
 let currentExtracted2faPass = null;
@@ -812,7 +860,10 @@ function renderOtpModal2fa(twofa) {
   const displayEl = document.getElementById('otp-2fa-badge-display');
   const subtextEl = document.getElementById('otp-2fa-subtext');
   const copyBtn = document.getElementById('copy-2fa-btn');
+  const resetBtn = document.getElementById('otp-reset-2fa-inline-btn');
   if (!displayEl) return;
+
+  if (resetBtn) resetBtn.style.display = 'none';
 
   if (!twofa) {
     displayEl.innerHTML = '<span style="color: var(--text-muted);">Memeriksa 2FA...</span>';
@@ -842,6 +893,15 @@ function renderOtpModal2fa(twofa) {
     if (subtextEl) {
       subtextEl.innerHTML = `<span style="color: var(--accent-amber);">⚠️ Password bukan 0707 atau 7. Reset telah diajukan ke Telegram, proses reset selesai pada: <strong>${escapeHtml(until)}</strong>.</span>`;
     }
+  } else if (twofa.twofa_status === 'mismatch') {
+    currentExtracted2faPass = null;
+    if (copyBtn) copyBtn.style.display = 'none';
+    if (resetBtn) resetBtn.style.display = 'inline-flex';
+    const hintText = twofa.twofa_hint ? ` (Hint: ${escapeHtml(twofa.twofa_hint)})` : '';
+    displayEl.innerHTML = `<span style="color: var(--accent-rose); font-weight: 700; font-size: 1.05rem;">❌ Sandi Bukan 0707 atau 7</span>${hintText ? `<span style="font-size:0.8rem; color:var(--text-muted); margin-left:8px;">${hintText}</span>` : ''}`;
+    if (subtextEl) {
+      subtextEl.innerHTML = '<span style="color: var(--accent-rose);">⚠️ Sandi akun ini bukan 0707 atau 7. <strong>Kata sandi belum di-reset</strong>. Klik tombol <strong>⚠️ Reset 2FA (7 Hari)</strong> di atas jika ingin mengajukan permohonan reset ke Telegram.</span>';
+    }
   } else if (twofa.has_2fa === false || twofa.twofa_status === 'no_2fa') {
     currentExtracted2faPass = null;
     if (copyBtn) copyBtn.style.display = 'none';
@@ -854,20 +914,21 @@ function renderOtpModal2fa(twofa) {
     if (copyBtn) copyBtn.style.display = 'none';
     displayEl.innerHTML = `<span style="color: var(--accent-amber); font-weight: 600;">🔒 2FA Aktif (Sandi Belum Dicek)</span>`;
     if (subtextEl) {
-      subtextEl.innerHTML = '<span>Klik tombol <strong>🔄 Cek / Reset 2FA</strong> di samping untuk mencocokkan sandi 0707/7 secara otomatis.</span>';
+      subtextEl.innerHTML = '<span>Klik tombol <strong>🔄 Cek 2FA</strong> di samping untuk mencocokkan sandi 0707/7 secara otomatis.</span>';
     }
   } else {
     currentExtracted2faPass = null;
     if (copyBtn) copyBtn.style.display = 'none';
     displayEl.innerHTML = `<span style="color: var(--text-muted);">Status 2FA belum dicek</span>`;
     if (subtextEl) {
-      subtextEl.innerHTML = '<span>Klik <strong>🔄 Cek / Reset 2FA</strong> untuk memverifikasi proteksi akun.</span>';
+      subtextEl.innerHTML = '<span>Klik <strong>🔄 Cek 2FA</strong> untuk memverifikasi proteksi akun.</span>';
     }
   }
 }
 
 window.openOtpModal = function(accountId, displayName, phoneNumber) {
   currentOtpAccountId = accountId;
+  currentOtpPhone = phoneNumber;
   currentExtractedOtp = null;
   currentExtracted2faPass = null;
 

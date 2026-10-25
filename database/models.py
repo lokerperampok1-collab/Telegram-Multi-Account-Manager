@@ -193,6 +193,8 @@ class TelegramAccountModel:
             # 2FA Filter
             if twofa_filter == "matched":
                 where_clauses.append("twofa_password IS NOT NULL")
+            elif twofa_filter == "mismatch":
+                where_clauses.append("twofa_status = 'mismatch'")
             elif twofa_filter == "reset_pending":
                 where_clauses.append("(twofa_status = 'reset_pending' OR twofa_reset_until IS NOT NULL)")
             elif twofa_filter == "enabled":

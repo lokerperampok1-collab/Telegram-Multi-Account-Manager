@@ -1802,6 +1802,25 @@ body.luxury-dashboard {
   color: #fff;
 }
 
+.btn-xs-reset {
+  background: rgba(244, 63, 94, 0.15);
+  border: 1px solid rgba(244, 63, 94, 0.35);
+  color: #ff6b81;
+  padding: 1px 7px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  line-height: 1.2;
+}
+
+.btn-xs-reset:hover {
+  background: rgba(244, 63, 94, 0.35);
+  border-color: #ff6b81;
+  color: #fff;
+}
+
 .otp-2fa-badge-box {
   display: flex;
   align-items: center;
