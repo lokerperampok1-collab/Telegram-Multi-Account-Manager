@@ -88,9 +88,23 @@ async def delete_account(account_id: int, current_user: dict = Depends(get_curre
 
 @router.post("/refresh-and-clean")
 async def refresh_and_clean_accounts(current_user: dict = Depends(get_current_user)):
-    """Verifies all account sessions, keeps valid ones online, and permanently deletes offline/dead/revoked accounts."""
+    """Verifies all account sessions and updates their online/offline status without deleting any accounts."""
     result = await client_manager.refresh_and_clean_accounts(current_user["id"])
     return result
+
+# ----------------- Active Devices / Authorizations -----------------
+
+@router.get("/{account_id}/devices")
+async def get_account_devices(account_id: int, current_user: dict = Depends(get_current_user)):
+    """Retrieves all active devices/sessions connected to a Telegram account."""
+    res = await client_manager.get_account_authorizations(account_id, current_user["id"])
+    return res
+
+@router.post("/{account_id}/devices/{auth_hash}/terminate")
+async def terminate_account_device(account_id: int, auth_hash: int, current_user: dict = Depends(get_current_user)):
+    """Terminates an active session/device connected to a Telegram account."""
+    res = await client_manager.terminate_account_authorization(account_id, current_user["id"], auth_hash)
+    return res
 
 # ----------------- Health & SpamBot Check -----------------
 

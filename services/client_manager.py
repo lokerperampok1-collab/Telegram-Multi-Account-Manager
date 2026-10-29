@@ -12,7 +12,15 @@ from telethon import TelegramClient, password as pwd_mod
 from telethon.sessions import StringSession
 from telethon.tl.functions.channels import JoinChannelRequest
 from telethon.tl.functions.messages import ImportChatInviteRequest, CheckChatInviteRequest
-from telethon.tl.functions.account import UpdateProfileRequest, GetPasswordRequest, GetPasswordSettingsRequest, ResetPasswordRequest, DeclinePasswordResetRequest
+from telethon.tl.functions.account import (
+    UpdateProfileRequest,
+    GetPasswordRequest,
+    GetPasswordSettingsRequest,
+    ResetPasswordRequest,
+    DeclinePasswordResetRequest,
+    GetAuthorizationsRequest,
+    ResetAuthorizationRequest
+)
 from telethon.tl.functions.contacts import GetContactsRequest, DeleteContactsRequest, ResetSavedRequest
 from telethon.tl.types import account as account_types, ChatInviteAlready, ChatInvite, InputUser
 from telethon.tl.functions.photos import UploadProfilePhotoRequest
@@ -425,8 +433,8 @@ class ClientManager:
     async def refresh_and_clean_accounts(self, user_id: int) -> dict:
         """
         Verifies session status for all accounts of a user.
-        If an account is offline, session revoked, expired, banned, or logged out ('keluar sesi' / 'tidak online'),
-        it is permanently deleted from the database and account list.
+        Updates online/offline status and profile information (display_name, username).
+        DOES NOT DELETE ACCOUNTS to prevent accidental data loss.
         """
         accounts = await TelegramAccountModel.list_by_user(user_id)
         if not accounts:
@@ -434,14 +442,15 @@ class ClientManager:
                 "status": "success",
                 "total_checked": 0,
                 "online_count": 0,
+                "offline_count": 0,
                 "deleted_count": 0,
-                "deleted_accounts": [],
+                "offline_accounts": [],
                 "message": "Tidak ada akun Telegram terdaftar"
             }
 
-        deleted_accounts = []
+        offline_accounts = []
         online_accounts = []
-        sem = asyncio.Semaphore(12)
+        sem = asyncio.Semaphore(10)
 
         async def verify_account(acc):
             acc_id = acc["id"]
@@ -469,25 +478,16 @@ class ClientManager:
                                 await TelegramAccountModel.update_display_name(acc_id, new_name)
                     else:
                         is_valid = False
-                except (AuthKeyUnregisteredError, UserDeactivatedError, UserDeactivatedBanError, SessionRevokedError, SessionPasswordNeededError):
+                except (AuthKeyUnregisteredError, UserDeactivatedError, UserDeactivatedBanError, SessionRevokedError):
                     is_valid = False
                 except Exception as e:
-                    err_msg = str(e).lower()
-                    if any(term in err_msg for term in ["authkey", "deactivated", "banned", "revoked", "unregistered", "expired", "invalid"]):
-                        is_valid = False
-                    else:
-                        is_valid = False
+                    # Connection error, timeout, or temporary network glitch
+                    is_valid = False
 
                 if not is_valid:
-                    if acc_id in self._active_clients:
-                        c = self._active_clients.pop(acc_id, None)
-                        if c:
-                            try:
-                                await c.disconnect()
-                            except Exception:
-                                pass
-                    await TelegramAccountModel.delete(acc_id, user_id)
-                    deleted_accounts.append({
+                    # Update status to offline in database, DO NOT DELETE
+                    await TelegramAccountModel.update_status(acc_id, False)
+                    offline_accounts.append({
                         "id": acc_id,
                         "name": name,
                         "phone": phone
@@ -501,18 +501,115 @@ class ClientManager:
 
         await asyncio.gather(*(verify_account(acc) for acc in accounts))
 
-        msg = f"Refresh selesai: {len(online_accounts)} akun online aktif"
-        if deleted_accounts:
-            msg += f", {len(deleted_accounts)} akun offline/keluar sesi telah dihapus"
+        msg = f"Refresh selesai: {len(online_accounts)} akun online"
+        if offline_accounts:
+            msg += f", {len(offline_accounts)} akun offline"
 
         return {
             "status": "success",
             "total_checked": len(accounts),
             "online_count": len(online_accounts),
-            "deleted_count": len(deleted_accounts),
-            "deleted_accounts": deleted_accounts,
+            "offline_count": len(offline_accounts),
+            "deleted_count": 0,
+            "offline_accounts": offline_accounts,
             "message": msg
         }
+
+    # ------------------ Active Devices / Authorizations ------------------
+
+    async def get_account_authorizations(self, account_id: int, user_id: int) -> dict:
+        """Queries Telegram for all active authorizations (devices / sessions) of an account."""
+        account = await TelegramAccountModel.get_by_id(account_id, user_id)
+        if not account:
+            return {"status": "error", "message": "Akun tidak ditemukan"}
+
+        client = self._active_clients.get(account_id)
+        if not client or not client.is_connected():
+            connect_res = await self.connect_account(account_id, user_id)
+            if connect_res.get("status") != "success":
+                return {
+                    "status": "error",
+                    "message": f"Gagal menghubungkan sesi akun: {connect_res.get('message', 'Sesi mati / kedaluwarsa')}"
+                }
+            client = self._active_clients.get(account_id)
+
+        try:
+            if not await client.is_user_authorized():
+                await TelegramAccountModel.update_status(account_id, False)
+                return {"status": "error", "message": "Sesi tidak terotorisasi atau sudah kedaluwarsa"}
+
+            auths_res = await client(GetAuthorizationsRequest())
+            authorizations = []
+            for a in auths_res.authorizations:
+                date_created_str = a.date_created.strftime("%Y-%m-%d %H:%M:%S") if getattr(a, 'date_created', None) else "-"
+                date_active_str = a.date_active.strftime("%Y-%m-%d %H:%M:%S") if getattr(a, 'date_active', None) else "-"
+                
+                authorizations.append({
+                    "hash": str(a.hash),
+                    "device_model": a.device_model or "Tidak diketahui",
+                    "platform": a.platform or "-",
+                    "system_version": a.system_version or "-",
+                    "app_name": a.app_name or "Telegram App",
+                    "app_version": a.app_version or "-",
+                    "date_created": date_created_str,
+                    "date_active": date_active_str,
+                    "ip": a.ip or "-",
+                    "country": a.country or "-",
+                    "region": a.region or "",
+                    "current": bool(getattr(a, 'current', False)),
+                    "official_app": bool(getattr(a, 'official_app', False)),
+                    "password_pending": bool(getattr(a, 'password_pending', False))
+                })
+
+            # Sort: current session first, then active date descending
+            authorizations.sort(key=lambda x: (not x["current"], x["date_active"] == "-"))
+
+            return {
+                "status": "success",
+                "account_id": account_id,
+                "phone_number": account.get("phone_number"),
+                "display_name": account.get("display_name"),
+                "total_devices": len(authorizations),
+                "authorizations": authorizations
+            }
+        except (UserDeactivatedError, UserDeactivatedBanError, AuthKeyUnregisteredError):
+            await TelegramAccountModel.update_status(account_id, False)
+            return {"status": "error", "message": "Akun Telegram telah dinonaktifkan / di-banned"}
+        except FloodWaitError as e:
+            return {"status": "error", "message": f"Terkena FloodWait Telegram, tunggu {e.seconds} detik."}
+        except Exception as e:
+            return {"status": "error", "message": f"Gagal mengambil daftar perangkat: {str(e)}"}
+
+    async def terminate_account_authorization(self, account_id: int, user_id: int, auth_hash: int) -> dict:
+        """Terminates a specific authorization/device of an account."""
+        account = await TelegramAccountModel.get_by_id(account_id, user_id)
+        if not account:
+            return {"status": "error", "message": "Akun tidak ditemukan"}
+
+        client = self._active_clients.get(account_id)
+        if not client or not client.is_connected():
+            connect_res = await self.connect_account(account_id, user_id)
+            if connect_res.get("status") != "success":
+                return {
+                    "status": "error",
+                    "message": f"Gagal menghubungkan sesi akun: {connect_res.get('message')}"
+                }
+            client = self._active_clients.get(account_id)
+
+        try:
+            if not await client.is_user_authorized():
+                await TelegramAccountModel.update_status(account_id, False)
+                return {"status": "error", "message": "Sesi tidak terotorisasi"}
+
+            await client(ResetAuthorizationRequest(hash=int(auth_hash)))
+            return {
+                "status": "success",
+                "message": "Sesi perangkat berhasil diputuskan dari Telegram."
+            }
+        except FloodWaitError as e:
+            return {"status": "error", "message": f"Terkena FloodWait Telegram, tunggu {e.seconds} detik."}
+        except Exception as e:
+            return {"status": "error", "message": f"Gagal memutuskan sesi perangkat: {str(e)}"}
 
     # ------------------ Group Join Methods ------------------
 

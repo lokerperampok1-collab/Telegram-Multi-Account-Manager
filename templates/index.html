@@ -1000,6 +1000,10 @@ Halo semuanya, selamat beraktivitas ya</textarea>
             </svg>
             <span id="refresh-otp-text">Cek Kode Baru</span>
           </button>
+
+          <button class="btn btn-secondary btn-sm" id="otp-check-devices-btn" title="Cek sesi & perangkat yang terhubung ke akun ini">
+            <span>📱 Cek Perangkat</span>
+          </button>
           
           <label class="auto-refresh-toggle" title="Otomatis mengecek kode masuk baru setiap 4 detik">
             <input type="checkbox" id="otp-auto-refresh-chk" checked>
@@ -1021,6 +1025,41 @@ Halo semuanya, selamat beraktivitas ya</textarea>
           </div>
           <div class="otp-history-list" id="otp-history-list">
             <div class="otp-empty-history">Memuat riwayat pesan...</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Cek Perangkat / Sesi Tersambung -->
+  <div id="devices-modal" class="modal-overlay" style="display: none;">
+    <div class="modal-card glass-panel" style="max-width: 650px;">
+      <div class="modal-header">
+        <div class="modal-title-wrap">
+          <div class="modal-icon-badge">📱</div>
+          <div>
+            <h3 class="modal-title" id="devices-modal-title">Perangkat & Sesi Terhubung</h3>
+            <p class="modal-subtitle" id="devices-modal-phone">Nomor: -</p>
+          </div>
+        </div>
+        <button class="modal-close-btn" id="devices-modal-close" title="Tutup Modal">&times;</button>
+      </div>
+
+      <div class="modal-body">
+        <div class="devices-top-bar">
+          <div class="devices-count-pill" id="devices-count-badge">Memuat...</div>
+          <button class="btn btn-secondary btn-sm" id="devices-refresh-btn" title="Muat ulang daftar sesi perangkat">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path>
+            </svg>
+            <span>Segarkan</span>
+          </button>
+        </div>
+
+        <div class="devices-list" id="devices-list">
+          <div style="text-align: center; padding: 24px; color: var(--text-muted);">
+            <div class="spinner" style="width: 20px; height: 20px; display: inline-block; margin-bottom: 8px;"></div>
+            <div>Mengambil daftar perangkat tersambung dari Telegram...</div>
           </div>
         </div>
       </div>

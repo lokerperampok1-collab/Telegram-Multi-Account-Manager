@@ -184,11 +184,20 @@ function renderAccounts(accounts) {
               ${get2FaBadgeHtml(acc)}
             </span>
           </div>
+          <div class="detail-row">
+            <span>Perangkat</span>
+            <span style="color: var(--accent-cyan); cursor: pointer; font-weight: 500;" onclick="openDevicesModal(${acc.id}, '${escapeHtml(acc.display_name || 'Akun #' + acc.id)}', '${escapeHtml(acc.phone_number || '-')}')" title="Cek daftar perangkat tersambung">
+              📱 Cek Sesi
+            </span>
+          </div>
         </div>
 
         <div class="account-actions">
           <button class="btn btn-secondary btn-sm otp-action-btn" onclick="openOtpModal(${acc.id}, '${escapeHtml(acc.display_name || 'Akun #' + acc.id)}', '${escapeHtml(acc.phone_number || '-')}')" title="Ambil kode masuk / OTP Telegram">
             🔑 Ambil OTP
+          </button>
+          <button class="btn btn-secondary btn-sm" onclick="openDevicesModal(${acc.id}, '${escapeHtml(acc.display_name || 'Akun #' + acc.id)}', '${escapeHtml(acc.phone_number || '-')}')" title="Cek Perangkat / Sesi yang Tersambung">
+            📱
           </button>
           <button class="btn btn-secondary btn-sm" onclick="checkAccountHealth(${acc.id})" title="Cek status @SpamBot">
             🛡️
@@ -554,11 +563,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const data = await res.json();
 
         if (res.ok) {
-          if (data.deleted_count > 0) {
-            showToast(`Refresh selesai: ${data.online_count} akun online, ${data.deleted_count} akun keluar sesi/offline telah dihapus!`, 'warning');
-          } else {
-            showToast(`Refresh selesai: Seluruh ${data.online_count} akun online aktif!`, 'success');
-          }
+          const offlineMsg = (data.offline_count !== undefined && data.offline_count > 0) ? `, ${data.offline_count} offline/nonaktif` : '';
+          showToast(`Refresh selesai: ${data.online_count || 0} akun online${offlineMsg}. (Tidak ada akun yang dihapus)`, 'success');
         } else {
           showToast(data.detail || 'Gagal merefresh akun', 'error');
         }
@@ -832,6 +838,34 @@ document.addEventListener('DOMContentLoaded', () => {
         if (displayEl) displayEl.innerHTML = '<span style="color: var(--accent-rose);">⚠️ Gagal Cek</span>';
         showToast('Koneksi server gagal', 'error');
       }
+    });
+  }
+
+  const checkDevicesFromOtpBtn = document.getElementById('otp-check-devices-btn');
+  if (checkDevicesFromOtpBtn) {
+    checkDevicesFromOtpBtn.addEventListener('click', () => {
+      if (!currentOtpAccountId) return;
+      const accName = document.getElementById('otp-account-name')?.textContent || 'Akun';
+      openDevicesModal(currentOtpAccountId, accName, currentOtpPhone || '-');
+    });
+  }
+
+  // Devices modal close buttons
+  const devicesModal = document.getElementById('devices-modal');
+  const devicesModalClose = document.getElementById('devices-modal-close');
+  if (devicesModalClose) {
+    devicesModalClose.addEventListener('click', closeDevicesModal);
+  }
+  if (devicesModal) {
+    devicesModal.addEventListener('click', (e) => {
+      if (e.target === devicesModal) closeDevicesModal();
+    });
+  }
+
+  const devicesRefreshBtn = document.getElementById('devices-refresh-btn');
+  if (devicesRefreshBtn) {
+    devicesRefreshBtn.addEventListener('click', () => {
+      if (currentDevicesAccountId) loadAccountDevices(currentDevicesAccountId);
     });
   }
 
@@ -1143,4 +1177,162 @@ window.checkAccountHealth = checkAccountHealth;
 window.checkAllAccountsHealth = checkAllAccountsHealth;
 window.triggerExport = triggerExport;
 window.loadAccounts = loadAccounts;
+window.openDevicesModal = openDevicesModal;
+window.closeDevicesModal = closeDevicesModal;
+window.loadAccountDevices = loadAccountDevices;
+window.terminateDeviceSession = terminateDeviceSession;
+
+// ==================== CONNECTED DEVICES MODAL CONTROLLER ====================
+let currentDevicesAccountId = null;
+
+function openDevicesModal(accountId, displayName, phoneNumber) {
+  currentDevicesAccountId = accountId;
+  const modal = document.getElementById('devices-modal');
+  if (!modal) return;
+
+  const nameEl = document.getElementById('devices-account-name');
+  const phoneEl = document.getElementById('devices-account-phone');
+  if (nameEl) nameEl.textContent = displayName || `Akun #${accountId}`;
+  if (phoneEl) phoneEl.textContent = phoneNumber || '-';
+
+  modal.classList.add('active');
+  loadAccountDevices(accountId);
+}
+
+function closeDevicesModal() {
+  const modal = document.getElementById('devices-modal');
+  if (modal) modal.classList.remove('active');
+  currentDevicesAccountId = null;
+}
+
+async function loadAccountDevices(accountId) {
+  const listEl = document.getElementById('devices-list');
+  const countPill = document.getElementById('devices-count-pill');
+  if (!listEl) return;
+
+  listEl.innerHTML = `
+    <div style="text-align: center; padding: 40px 20px; color: var(--text-muted);">
+      <div class="spinner" style="width: 28px; height: 28px; margin: 0 auto 16px; border-width: 3px;"></div>
+      <p style="font-size: 0.95rem; font-weight: 500; color: var(--text-primary);">Mengambil daftar perangkat dari Telegram...</p>
+      <p style="font-size: 0.8rem; margin-top: 4px;">Menghubungkan ke session akun...</p>
+    </div>
+  `;
+  if (countPill) countPill.textContent = 'Memuat...';
+
+  try {
+    const res = await fetch(`/api/accounts/${accountId}/devices`, {
+      headers: getAuthHeaders()
+    });
+    const data = await res.json();
+
+    if (!res.ok) {
+      listEl.innerHTML = `
+        <div style="text-align: center; padding: 35px 20px; color: var(--accent-rose);">
+          <div style="font-size: 2.2rem; margin-bottom: 8px;">⚠️</div>
+          <p style="font-weight: 600;">Gagal mengambil perangkat</p>
+          <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: 4px;">${escapeHtml(data.detail || 'Terjadi kesalahan')}</p>
+          <button class="btn btn-secondary btn-sm" onclick="loadAccountDevices(${accountId})" style="margin-top: 14px;">Coba Lagi</button>
+        </div>
+      `;
+      if (countPill) countPill.textContent = 'Error';
+      return;
+    }
+
+    const authorizations = data.authorizations || [];
+    if (countPill) countPill.textContent = `${authorizations.length} Perangkat Aktif`;
+
+    if (authorizations.length === 0) {
+      listEl.innerHTML = `
+        <div style="text-align: center; padding: 35px 20px; color: var(--text-muted);">
+          <div style="font-size: 2rem; margin-bottom: 8px;">📱</div>
+          <p>Tidak ada perangkat lain yang terdeteksi.</p>
+        </div>
+      `;
+      return;
+    }
+
+    listEl.innerHTML = authorizations.map(dev => {
+      const isCurrent = !!dev.current;
+      const deviceTitle = [dev.device_model, dev.platform].filter(Boolean).join(' • ') || 'Perangkat Tidak Dikenal';
+      const appInfo = [dev.app_name, dev.app_version].filter(Boolean).join(' ') || '-';
+      const location = [dev.country, dev.region].filter(Boolean).join(', ') || 'Lokasi tidak diketahui';
+      const ip = dev.ip || '-';
+      const lastActive = dev.date_active || '-';
+      const created = dev.date_created || '-';
+
+      return `
+        <div class="device-card ${isCurrent ? 'current-device' : ''}">
+          <div class="device-card-header">
+            <div>
+              <div class="device-model-name">${escapeHtml(deviceTitle)}</div>
+              <div class="device-app-name">${escapeHtml(appInfo)}</div>
+            </div>
+            <div>
+              ${isCurrent
+                ? `<span class="device-badge-current">● Sesi Ini (Script/Bot)</span>`
+                : `<span class="device-badge-other">Perangkat Lain</span>`}
+            </div>
+          </div>
+          <div class="device-card-details">
+            <div class="device-detail-item">
+              <span class="device-detail-label">IP Address</span>
+              <span class="device-detail-value">${escapeHtml(ip)}</span>
+            </div>
+            <div class="device-detail-item">
+              <span class="device-detail-label">Lokasi</span>
+              <span class="device-detail-value">${escapeHtml(location)}</span>
+            </div>
+            <div class="device-detail-item">
+              <span class="device-detail-label">Aktif Terakhir</span>
+              <span class="device-detail-value">${escapeHtml(lastActive)}</span>
+            </div>
+            <div class="device-detail-item">
+              <span class="device-detail-label">Sesi Dibuat</span>
+              <span class="device-detail-value">${escapeHtml(created)}</span>
+            </div>
+          </div>
+          ${!isCurrent && dev.hash ? `
+            <div style="margin-top: 10px; display: flex; justify-content: flex-end;">
+              <button class="btn btn-danger btn-sm" onclick="terminateDeviceSession(${accountId}, '${escapeHtml(dev.hash)}', '${escapeHtml(deviceTitle)}')">
+                🚫 Putuskan Sesi Ini
+              </button>
+            </div>
+          ` : ''}
+        </div>
+      `;
+    }).join('');
+
+  } catch (err) {
+    listEl.innerHTML = `
+      <div style="text-align: center; padding: 30px; color: var(--accent-rose);">
+        <p>Gagal menghubungi server</p>
+      </div>
+    `;
+    if (countPill) countPill.textContent = 'Gagal';
+  }
+}
+
+async function terminateDeviceSession(accountId, authHash, deviceName) {
+  if (!confirm(`Apakah Anda yakin ingin mengeluarkan sesi untuk perangkat:\n"${deviceName}"?`)) {
+    return;
+  }
+
+  showToast('Memutuskan sesi perangkat...', 'info');
+  try {
+    const res = await fetch(`/api/accounts/${accountId}/devices/${encodeURIComponent(authHash)}/terminate`, {
+      method: 'POST',
+      headers: getAuthHeaders()
+    });
+    const data = await res.json();
+    if (res.ok) {
+      showToast(data.message || 'Sesi perangkat berhasil diputuskan!', 'success');
+      loadAccountDevices(accountId);
+    } else {
+      showToast(data.detail || 'Gagal memutuskan sesi perangkat', 'error');
+    }
+  } catch (e) {
+    showToast('Koneksi gagal saat memutuskan sesi', 'error');
+  }
+}
+
 
