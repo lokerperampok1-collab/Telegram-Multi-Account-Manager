@@ -166,6 +166,15 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     }
 
+    const gotoChange2faBtn = document.getElementById('goto-change-2fa-btn');
+    if (gotoChange2faBtn) {
+      gotoChange2faBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        const navChange2fa = document.getElementById('nav-btn-change-2fa');
+        if (navChange2fa) navChange2fa.click();
+      });
+    }
+
     // Initialize cancel button listeners
     const cancelBtnIds = [
       'global-cancel-btn',
@@ -174,7 +183,8 @@ document.addEventListener('DOMContentLoaded', () => {
       'cancel-sendmsg-btn',
       'cancel-profile-btn',
       'cancel-clean-btn',
-      'cancel-contacts-btn'
+      'cancel-contacts-btn',
+      'cancel-change2fa-btn'
     ];
 
     cancelBtnIds.forEach(id => {
@@ -238,7 +248,8 @@ window.OperationManager = {
       'cancel-sendmsg-btn',
       'cancel-profile-btn',
       'cancel-clean-btn',
-      'cancel-contacts-btn'
+      'cancel-contacts-btn',
+      'cancel-change2fa-btn'
     ];
 
     cancelBtnIds.forEach(id => {
@@ -255,7 +266,7 @@ window.OperationManager = {
 
   async requestCancel() {
     // Visually update buttons to indicate stopping state
-    const allCancelBtns = document.querySelectorAll('#global-cancel-btn, #accounts-cancel-btn, #cancel-join-btn, #cancel-sendmsg-btn, #cancel-profile-btn, #cancel-clean-btn, #cancel-contacts-btn');
+    const allCancelBtns = document.querySelectorAll('#global-cancel-btn, #accounts-cancel-btn, #cancel-join-btn, #cancel-sendmsg-btn, #cancel-profile-btn, #cancel-clean-btn, #cancel-contacts-btn, #cancel-change2fa-btn');
     allCancelBtns.forEach(btn => {
       btn.disabled = true;
       btn.innerHTML = '<span>⏳ Menghentikan...</span>';

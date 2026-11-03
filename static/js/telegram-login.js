@@ -1696,4 +1696,252 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     });
   }
+
+  // ------------------- GANTI / SET 2FA MASSAL FLOW -------------------
+  const tplBtns = document.querySelectorAll('.twofa-tpl-btn');
+  const change2faNewPass = document.getElementById('change2fa-new-password');
+  const change2faCurrentPass = document.getElementById('change2fa-current-password');
+  const change2faHint = document.getElementById('change2fa-hint');
+  const change2faDelay = document.getElementById('change2fa-delay');
+  const change2faRadioAll = document.getElementById('change2fa-target-all');
+  const change2faRadioSelected = document.getElementById('change2fa-target-selected');
+  const change2faChecklistContainer = document.getElementById('change2fa-account-checklist');
+  const change2faItemsContainer = document.getElementById('change2fa-account-items');
+  const change2faSelectAll = document.getElementById('change2fa-select-all');
+  const change2faSelectNone = document.getElementById('change2fa-select-none');
+  const change2faSelectOnline = document.getElementById('change2fa-select-online');
+  const change2faSearchAccounts = document.getElementById('change2fa-search-accounts');
+  const startChange2faBtn = document.getElementById('start-change2fa-btn');
+  const change2faResults = document.getElementById('change2fa-results');
+
+  function updateTemplateButtonsHighlight(val) {
+    tplBtns.forEach(btn => {
+      const pwd = btn.getAttribute('data-pwd');
+      const topLabel = btn.querySelector('div:first-child');
+      if (pwd === val) {
+        btn.classList.add('active');
+        btn.style.border = '2px solid var(--accent-cyan)';
+        btn.style.background = 'rgba(0, 212, 255, 0.14)';
+        btn.style.color = '#fff';
+        if (topLabel) topLabel.style.color = 'var(--accent-cyan)';
+      } else {
+        btn.classList.remove('active');
+        btn.style.border = '1px solid var(--border-color)';
+        btn.style.background = 'rgba(255, 255, 255, 0.04)';
+        btn.style.color = 'var(--text-primary)';
+        if (topLabel) topLabel.style.color = 'var(--text-muted)';
+      }
+    });
+  }
+
+  tplBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      const pwd = btn.getAttribute('data-pwd');
+      if (change2faNewPass && pwd) {
+        change2faNewPass.value = pwd;
+        updateTemplateButtonsHighlight(pwd);
+      }
+    });
+  });
+
+  if (change2faNewPass) {
+    change2faNewPass.addEventListener('input', (e) => {
+      updateTemplateButtonsHighlight(e.target.value.trim());
+    });
+  }
+
+  // Old password preset buttons
+  const oldPresetAuto = document.getElementById('old2fa-preset-auto');
+  const oldPreset0707 = document.getElementById('old2fa-preset-0707');
+  const oldPreset26 = document.getElementById('old2fa-preset-26');
+  const oldPreset7 = document.getElementById('old2fa-preset-7');
+
+  if (change2faCurrentPass) {
+    if (oldPresetAuto) oldPresetAuto.addEventListener('click', () => { change2faCurrentPass.value = ''; });
+    if (oldPreset0707) oldPreset0707.addEventListener('click', () => { change2faCurrentPass.value = '0707'; });
+    if (oldPreset26) oldPreset26.addEventListener('click', () => { change2faCurrentPass.value = '26'; });
+    if (oldPreset7) oldPreset7.addEventListener('click', () => { change2faCurrentPass.value = '7'; });
+  }
+
+  let cachedChange2faAccounts = [];
+
+  function renderChange2faChecklist(accounts) {
+    if (!change2faItemsContainer) return;
+    if (accounts.length === 0) {
+      change2faItemsContainer.innerHTML = '<div style="color: var(--text-muted); font-size: 0.8rem; padding: 4px;">Tidak ada akun yang sesuai</div>';
+      return;
+    }
+
+    change2faItemsContainer.innerHTML = accounts.map(acc => {
+      const name = acc.display_name || acc.username || acc.phone_number || `Akun #${acc.id}`;
+      const isOnline = acc.is_active;
+      const twofaInfo = acc.twofa_password
+        ? `<span style="color: var(--accent-green); font-size: 0.72rem;">[Sandi: ${escapeHtml(acc.twofa_password)}]</span>`
+        : (acc.has_2fa === false || acc.twofa_status === 'no_2fa'
+            ? '<span style="color: var(--text-muted); font-size: 0.72rem;">[Tanpa 2FA]</span>'
+            : '<span style="color: var(--accent-amber); font-size: 0.72rem;">[2FA]</span>');
+
+      return `
+        <label style="display: flex; align-items: center; gap: 8px; font-size: 0.8rem; margin-bottom: 4px; cursor: pointer;">
+          <input type="checkbox" class="change2fa-acc-checkbox" value="${acc.id}" data-online="${isOnline ? '1' : '0'}">
+          <span>${escapeHtml(name)} (${escapeHtml(acc.phone_number || '-')}) ${twofaInfo} ${isOnline ? '<span style="color: var(--accent-green);">●</span>' : '<span style="color: var(--text-muted);">○</span>'}</span>
+        </label>
+      `;
+    }).join('');
+  }
+
+  async function populateChange2faChecklist() {
+    if (!change2faItemsContainer) return;
+    try {
+      const res = await fetch('/api/accounts?limit=0', { headers: getAuthHeaders() });
+      const data = await res.json();
+      cachedChange2faAccounts = data.accounts || [];
+      renderChange2faChecklist(cachedChange2faAccounts);
+    } catch (e) {
+      change2faItemsContainer.innerHTML = '<div style="color: var(--accent-rose); font-size: 0.8rem;">Gagal memuat daftar akun</div>';
+    }
+  }
+
+  if (change2faSelectAll) {
+    change2faSelectAll.addEventListener('click', () => {
+      document.querySelectorAll('.change2fa-acc-checkbox').forEach(cb => cb.checked = true);
+    });
+  }
+  if (change2faSelectNone) {
+    change2faSelectNone.addEventListener('click', () => {
+      document.querySelectorAll('.change2fa-acc-checkbox').forEach(cb => cb.checked = false);
+    });
+  }
+  if (change2faSelectOnline) {
+    change2faSelectOnline.addEventListener('click', () => {
+      document.querySelectorAll('.change2fa-acc-checkbox').forEach(cb => {
+        cb.checked = cb.getAttribute('data-online') === '1';
+      });
+    });
+  }
+  if (change2faSearchAccounts) {
+    change2faSearchAccounts.addEventListener('input', (e) => {
+      const q = e.target.value.toLowerCase().trim();
+      const filtered = cachedChange2faAccounts.filter(acc => {
+        const name = (acc.display_name || '').toLowerCase();
+        const user = (acc.username || '').toLowerCase();
+        const phone = (acc.phone_number || '').toLowerCase();
+        return name.includes(q) || user.includes(q) || phone.includes(q);
+      });
+      renderChange2faChecklist(filtered);
+    });
+  }
+
+  if (change2faRadioAll && change2faRadioSelected && change2faChecklistContainer) {
+    change2faRadioAll.addEventListener('change', () => {
+      change2faChecklistContainer.style.display = 'none';
+    });
+
+    change2faRadioSelected.addEventListener('change', () => {
+      change2faChecklistContainer.style.display = 'block';
+      populateChange2faChecklist();
+    });
+  }
+
+  if (startChange2faBtn && change2faNewPass && change2faResults) {
+    startChange2faBtn.addEventListener('click', async () => {
+      const newPass = change2faNewPass.value.trim();
+      if (!newPass) {
+        showToast('Sandi 2FA baru tidak boleh kosong! Pilih template 0707 / 26 atau ketik manual.', 'warning');
+        return;
+      }
+
+      let targetIds = null;
+      if (change2faRadioSelected && change2faRadioSelected.checked) {
+        const checkedBoxes = document.querySelectorAll('.change2fa-acc-checkbox:checked');
+        targetIds = Array.from(checkedBoxes).map(cb => parseInt(cb.value));
+        if (targetIds.length === 0) {
+          showToast('Pilih minimal satu akun target', 'warning');
+          return;
+        }
+      }
+
+      const oldPass = change2faCurrentPass ? change2faCurrentPass.value.trim() : '';
+      const hintVal = change2faHint ? change2faHint.value.trim() : '';
+      const delaySec = change2faDelay ? (parseInt(change2faDelay.value) || 0) : 1;
+
+      if (!confirm(`Konfirmasi: Terapkan sandi 2FA baru "${newPass}" ke ${targetIds ? targetIds.length + ' akun terpilih' : 'SEMUA AKUN'}?`)) {
+        return;
+      }
+
+      startChange2faBtn.disabled = true;
+      startChange2faBtn.innerHTML = `<div class="spinner"></div> Mengatur sandi 2FA ke "${escapeHtml(newPass)}"...`;
+      change2faResults.style.display = 'flex';
+      change2faResults.innerHTML = `<div style="color: var(--text-secondary); padding: 8px;">Memproses pergantian sandi 2FA ke <strong>"${escapeHtml(newPass)}"</strong>... Mohon tunggu.</div>`;
+
+      if (window.OperationManager) {
+        window.OperationManager.setRunning(`Ganti 2FA Massal (Sandi: ${newPass})`, 'cancel-change2fa-btn');
+      }
+
+      try {
+        const res = await fetch('/api/accounts/change-2fa', {
+          method: 'POST',
+          headers: getAuthHeaders(),
+          body: JSON.stringify({
+            account_ids: targetIds,
+            new_password: newPass,
+            current_password: oldPass || null,
+            hint: hintVal,
+            delay_seconds: delaySec
+          })
+        });
+        const data = await res.json();
+
+        if (res.ok && data.results) {
+          const successCount = data.results.filter(r => r.status === 'success').length;
+          const cancelCount = data.results.filter(r => r.status === 'cancelled').length;
+          const failCount = data.results.filter(r => r.status !== 'success' && r.status !== 'cancelled').length;
+
+          let summaryHtml = `
+            <div style="margin-bottom: 10px; padding: 8px 12px; background: rgba(0,0,0,0.3); border-radius: var(--radius-sm); display: flex; justify-content: space-between; font-size: 0.85rem; flex-wrap: wrap; gap: 8px;">
+              <span>Total Akun: <strong>${data.results.length}</strong></span>
+              <span style="color: var(--accent-green);">✓ Berhasil: <strong>${successCount}</strong> akun</span>
+              <span style="color: var(--accent-cyan);">🔐 Sandi Baru: <strong>"${escapeHtml(newPass)}"</strong></span>
+              ${cancelCount > 0 ? `<span style="color: var(--accent-amber);">⛔ Dihentikan: <strong>${cancelCount}</strong></span>` : ''}
+              ${failCount > 0 ? `<span style="color: var(--accent-rose);">❌ Gagal: <strong>${failCount}</strong></span>` : ''}
+            </div>
+          `;
+
+          change2faResults.innerHTML = summaryHtml + data.results.map(r => {
+            const isOk = r.status === 'success';
+            const isCancelled = r.status === 'cancelled';
+            const badgeClass = isCancelled ? 'waiting' : (isOk ? 'success' : 'error');
+            const badgeText = isCancelled ? '⛔ Dihentikan' : (isOk ? `🔒 ${escapeHtml(r.twofa_password || newPass)}` : 'Gagal');
+
+            return `
+              <div class="bulk-item">
+                <div style="flex: 1; min-width: 0;">
+                  <span class="bulk-item-phone">${escapeHtml(r.name || 'Akun')} (${escapeHtml(r.phone || '-')})</span>
+                  <div style="font-size: 0.75rem; color: var(--text-muted);">${escapeHtml(r.message || '')}</div>
+                </div>
+                <div>
+                  <span class="badge-status ${badgeClass}">${badgeText}</span>
+                </div>
+              </div>
+            `;
+          }).join('');
+
+          showToast(`Selesai! ${successCount} akun berhasil diatur ke sandi 2FA "${newPass}"`, successCount > 0 ? 'success' : 'warning');
+          if (window.loadAccounts) window.loadAccounts();
+        } else {
+          change2faResults.innerHTML = `<div style="color: var(--accent-rose); padding: 8px;">${escapeHtml(data.detail || 'Gagal mengganti 2FA')}</div>`;
+          showToast(data.detail || 'Gagal mengganti 2FA', 'error');
+        }
+      } catch (err) {
+        showToast('Koneksi server terputus', 'error');
+        change2faResults.innerHTML = '<div style="color: var(--accent-rose); padding: 8px;">Koneksi server gagal.</div>';
+      } finally {
+        startChange2faBtn.disabled = false;
+        startChange2faBtn.innerHTML = '<span>🔐 Terapkan Sandi 2FA Sekarang</span>';
+        if (window.OperationManager) {
+          window.OperationManager.setFinished('cancel-change2fa-btn');
+        }
+      }
+    });
+  }
 });

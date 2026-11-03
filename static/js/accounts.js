@@ -841,6 +841,48 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  async function setSingleAccount2FAFromOtpModal(newPass) {
+    if (!currentOtpAccountId) return;
+    if (!confirm(`Ganti / pasang sandi 2FA akun ini menjadi "${newPass}"?`)) return;
+
+    const displayEl = document.getElementById('otp-2fa-badge-display');
+    const resetBtn = document.getElementById('otp-reset-2fa-inline-btn');
+    if (resetBtn) resetBtn.style.display = 'none';
+    if (displayEl) displayEl.innerHTML = `<div class="spinner" style="width:12px;height:12px;display:inline-block;"></div> Mengatur 2FA ke "${escapeHtml(newPass)}"...`;
+
+    try {
+      const res = await fetch(`/api/accounts/${currentOtpAccountId}/change-2fa`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ new_password: newPass })
+      });
+      const data = await res.json();
+      if (res.ok && data.status === 'success') {
+        renderOtpModal2fa(data);
+        showToast(data.message || `2FA berhasil diatur ke "${newPass}"`, 'success');
+        const cardBadge = document.getElementById(`twofa-badge-${currentOtpAccountId}`);
+        if (cardBadge) cardBadge.innerHTML = get2FaBadgeHtml(data);
+      } else {
+        const errMsg = data.detail || data.message || 'Gagal mengganti 2FA';
+        if (displayEl) displayEl.innerHTML = `<span style="color: var(--accent-rose);">⚠️ ${escapeHtml(errMsg)}</span>`;
+        showToast(errMsg, 'error');
+      }
+    } catch (err) {
+      if (displayEl) displayEl.innerHTML = '<span style="color: var(--accent-rose);">⚠️ Gagal Koneksi</span>';
+      showToast('Koneksi server gagal', 'error');
+    }
+  }
+
+  const otpSet0707Btn = document.getElementById('otp-set-2fa-0707-btn');
+  if (otpSet0707Btn) {
+    otpSet0707Btn.addEventListener('click', () => setSingleAccount2FAFromOtpModal('0707'));
+  }
+
+  const otpSet26Btn = document.getElementById('otp-set-2fa-26-btn');
+  if (otpSet26Btn) {
+    otpSet26Btn.addEventListener('click', () => setSingleAccount2FAFromOtpModal('26'));
+  }
+
   const checkDevicesFromOtpBtn = document.getElementById('otp-check-devices-btn');
   if (checkDevicesFromOtpBtn) {
     checkDevicesFromOtpBtn.addEventListener('click', () => {

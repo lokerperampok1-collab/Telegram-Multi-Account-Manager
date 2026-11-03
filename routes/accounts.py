@@ -124,7 +124,14 @@ async def check_all_health(current_user: dict = Depends(get_current_user)):
     results = await client_manager.check_all_accounts_health(current_user["id"])
     return {"status": "success", "results": results}
 
-# ----------------- 2FA Check (Two-Step Verification) -----------------
+# ----------------- 2FA Check & Change (Two-Step Verification) -----------------
+
+class Change2FARequest(BaseModel):
+    account_ids: Optional[List[int]] = None
+    new_password: str
+    current_password: Optional[str] = None
+    hint: Optional[str] = ""
+    delay_seconds: int = Field(default=1, ge=0, le=60)
 
 @router.post("/{account_id}/check-2fa")
 async def check_account_2fa(account_id: int, current_user: dict = Depends(get_current_user)):
@@ -143,6 +150,41 @@ async def check_all_2fa(current_user: dict = Depends(get_current_user)):
     """Checks Two-Step Verification (2FA) for all user accounts sequentially."""
     results = await client_manager.check_all_accounts_2fa(current_user["id"])
     return {"status": "success", "results": results}
+
+@router.post("/change-2fa")
+async def change_2fa_bulk(req: Change2FARequest, current_user: dict = Depends(get_current_user)):
+    """Sets or changes 2FA password across selected or all accounts."""
+    new_pwd = (req.new_password or "").strip()
+    if not new_pwd:
+        raise HTTPException(status_code=400, detail="Sandi 2FA baru tidak boleh kosong")
+
+    results = await client_manager.change_accounts_2fa_bulk(
+        user_id=current_user["id"],
+        new_password=new_pwd,
+        current_password=req.current_password,
+        hint=req.hint or "",
+        account_ids=req.account_ids,
+        delay_seconds=req.delay_seconds
+    )
+    return {"status": "success", "results": results}
+
+@router.post("/{account_id}/change-2fa")
+async def change_single_account_2fa(account_id: int, req: Change2FARequest, current_user: dict = Depends(get_current_user)):
+    """Sets or changes 2FA password for a single account."""
+    new_pwd = (req.new_password or "").strip()
+    if not new_pwd:
+        raise HTTPException(status_code=400, detail="Sandi 2FA baru tidak boleh kosong")
+
+    res = await client_manager.change_account_2fa(
+        account_id=account_id,
+        user_id=current_user["id"],
+        new_password=new_pwd,
+        current_password=req.current_password,
+        hint=req.hint or ""
+    )
+    if res.get("status") == "error":
+        raise HTTPException(status_code=400, detail=res.get("message", "Gagal mengganti 2FA"))
+    return res
 
 # ----------------- Telegram Login OTP Retrieval -----------------
 

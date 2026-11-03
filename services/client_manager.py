@@ -1132,8 +1132,15 @@ class ClientManager:
                     "message": "2FA Tidak Aktif (Tanpa Password)"
                 }
 
-            # If 2FA is active, test candidate passwords: "0707" and "7"
-            candidates = ["0707", "7"]
+            # If 2FA is active, test saved password first, then candidate passwords: "0707", "26", and "7"
+            candidates = []
+            saved_pwd = account.get("twofa_password")
+            if saved_pwd:
+                candidates.append(str(saved_pwd))
+            for default_cand in ["0707", "26", "7"]:
+                if default_cand not in candidates:
+                    candidates.append(default_cand)
+
             matched_pwd = None
             for cand in candidates:
                 try:
@@ -1380,6 +1387,209 @@ class ClientManager:
                     await self._interruptible_sleep(1, op_id)
         finally:
             self._finish_operation(op_id)
+        return results
+
+    async def change_account_2fa(
+        self,
+        account_id: int,
+        user_id: int,
+        new_password: str,
+        current_password: Optional[str] = None,
+        hint: str = ""
+    ) -> dict:
+        """Sets or changes the 2FA (Cloud Password) for a single Telegram account."""
+        account = await TelegramAccountModel.get_by_id(account_id, user_id)
+        if not account:
+            return {"status": "error", "message": "Akun tidak ditemukan"}
+
+        clean_new = (new_password or "").strip()
+        if not clean_new:
+            return {"status": "error", "message": "Sandi 2FA baru tidak boleh kosong"}
+
+        client = self._active_clients.get(account_id)
+        if not client or not client.is_connected():
+            connect_res = await self.connect_account(account_id, user_id)
+            if connect_res.get("status") != "success":
+                return {
+                    "status": "error",
+                    "message": f"Gagal menghubungkan sesi akun: {connect_res.get('message', 'Sesi mati / kedaluwarsa')}"
+                }
+            client = self._active_clients.get(account_id)
+
+        try:
+            if not await client.is_user_authorized():
+                await TelegramAccountModel.update_status(account_id, False)
+                return {"status": "error", "message": "Sesi tidak terotorisasi atau sudah kedaluwarsa"}
+
+            pwd = await client(GetPasswordRequest())
+            has_2fa = bool(pwd.has_password)
+            pending_reset_date = getattr(pwd, 'pending_reset_date', None)
+            clean_hint = (hint or "").strip()
+
+            # Case 1: Akun belum memiliki 2FA sama sekali -> langsung pasang sandi baru
+            if not has_2fa:
+                await client.edit_2fa(
+                    current_password=None,
+                    new_password=clean_new,
+                    hint=clean_hint
+                )
+                await TelegramAccountModel.update_2fa_status(
+                    account_id=account_id,
+                    has_2fa=True,
+                    hint=clean_hint or None,
+                    twofa_password=clean_new,
+                    twofa_status="matched",
+                    twofa_reset_until=None
+                )
+                return {
+                    "status": "success",
+                    "account_id": account_id,
+                    "phone_number": account.get("phone_number"),
+                    "display_name": account.get("display_name"),
+                    "has_2fa": True,
+                    "twofa_password": clean_new,
+                    "twofa_status": "matched",
+                    "hint": clean_hint or None,
+                    "message": f"Berhasil memasang 2FA baru: '{clean_new}' (sebelumnya Tanpa 2FA)"
+                }
+
+            # Case 2: Akun sudah memiliki 2FA -> cari tahu sandi lama secara otomatis atau dari input
+            candidates = []
+            if current_password and current_password.strip():
+                candidates.append(current_password.strip())
+
+            saved_pwd = account.get("twofa_password")
+            if saved_pwd and str(saved_pwd) not in candidates:
+                candidates.append(str(saved_pwd))
+
+            for default_cand in ["0707", "26", "7"]:
+                if default_cand not in candidates:
+                    candidates.append(default_cand)
+
+            changed_from = None
+            for cand in candidates:
+                try:
+                    await client.edit_2fa(
+                        current_password=cand,
+                        new_password=clean_new,
+                        hint=clean_hint
+                    )
+                    changed_from = cand
+                    break
+                except PasswordHashInvalidError:
+                    continue
+                except FloodWaitError:
+                    raise
+                except Exception:
+                    continue
+
+            if changed_from is not None:
+                if pending_reset_date:
+                    try:
+                        await client(DeclinePasswordResetRequest())
+                    except Exception:
+                        pass
+
+                await TelegramAccountModel.update_2fa_status(
+                    account_id=account_id,
+                    has_2fa=True,
+                    hint=clean_hint or None,
+                    twofa_password=clean_new,
+                    twofa_status="matched",
+                    twofa_reset_until=None
+                )
+                msg = (
+                    f"Sandi 2FA diperbarui (tetap '{clean_new}')"
+                    if changed_from == clean_new
+                    else f"Berhasil ganti 2FA: '{changed_from}' ➔ '{clean_new}'"
+                )
+                return {
+                    "status": "success",
+                    "account_id": account_id,
+                    "phone_number": account.get("phone_number"),
+                    "display_name": account.get("display_name"),
+                    "has_2fa": True,
+                    "twofa_password": clean_new,
+                    "twofa_status": "matched",
+                    "hint": clean_hint or None,
+                    "message": msg
+                }
+
+            return {
+                "status": "error",
+                "account_id": account_id,
+                "phone_number": account.get("phone_number"),
+                "display_name": account.get("display_name"),
+                "message": f"Gagal: Sandi 2FA lama tidak cocok (sudah dicoba: {', '.join(candidates)})"
+            }
+
+        except (UserDeactivatedError, UserDeactivatedBanError, AuthKeyUnregisteredError):
+            await TelegramAccountModel.update_status(account_id, False)
+            return {"status": "error", "message": "Akun Telegram telah dinonaktifkan / di-banned"}
+        except FloodWaitError as e:
+            return {"status": "error", "message": f"Terkena FloodWait Telegram, tunggu {e.seconds} detik."}
+        except Exception as e:
+            return {"status": "error", "message": f"Gagal mengganti 2FA: {str(e)}"}
+
+    async def change_accounts_2fa_bulk(
+        self,
+        user_id: int,
+        new_password: str,
+        current_password: Optional[str] = None,
+        hint: str = "",
+        account_ids: Optional[list[int]] = None,
+        delay_seconds: int = 1
+    ) -> list[dict]:
+        """Changes or sets 2FA password across selected or all user accounts."""
+        op_id = f"chg2fa_{uuid.uuid4().hex[:8]}"
+        self._start_operation(op_id, f"Ganti 2FA Massal (Sandi: {new_password})")
+        results = []
+
+        try:
+            all_accounts = await TelegramAccountModel.list_by_user(user_id)
+            if account_ids:
+                accounts_to_process = [acc for acc in all_accounts if acc["id"] in account_ids]
+            else:
+                accounts_to_process = all_accounts
+
+            if not accounts_to_process:
+                return [{"status": "error", "message": "Tidak ada akun Telegram yang dipilih"}]
+
+            for idx, acc in enumerate(accounts_to_process):
+                if self._is_cancelled(op_id):
+                    results.append({
+                        "account_id": 0,
+                        "name": "—",
+                        "phone": "",
+                        "status": "cancelled",
+                        "message": f"Proses dihentikan oleh pengguna ({idx}/{len(accounts_to_process)} selesai)"
+                    })
+                    break
+
+                acc_id = acc["id"]
+                acc_name = acc.get("display_name") or acc.get("phone_number") or f"Akun #{acc_id}"
+
+                res = await self.change_account_2fa(
+                    account_id=acc_id,
+                    user_id=user_id,
+                    new_password=new_password,
+                    current_password=current_password,
+                    hint=hint
+                )
+                results.append({
+                    "account_id": acc_id,
+                    "name": acc_name,
+                    "phone": acc.get("phone_number"),
+                    "status": res.get("status", "error"),
+                    "twofa_password": res.get("twofa_password"),
+                    "message": res.get("message", "")
+                })
+
+                if idx < len(accounts_to_process) - 1 and delay_seconds > 0:
+                    await self._interruptible_sleep(delay_seconds, op_id)
+        finally:
+            self._finish_operation(op_id)
+
         return results
 
     # ------------------ Session Export & Import ------------------
