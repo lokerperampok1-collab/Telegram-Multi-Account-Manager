@@ -797,13 +797,16 @@ Halo semuanya, selamat beraktivitas ya</textarea>
             <div class="tool-header-lux">
               <div class="tool-icon-circle" style="background: linear-gradient(135deg, var(--accent-rose), var(--accent-purple));">🧹</div>
               <div>
-                <h3 class="tool-title">Bersihkan Chat & Akun (Account Cleaner)</h3>
-                <p class="tool-subtitle">Keluar dari semua grup/channel dan hapus percakapan bot/PM secara massal</p>
+                <h3 class="tool-title">Bersihkan Chat & Akun Instan (Delete All Instant)</h3>
+                <p class="tool-subtitle">Keluar dari seluruh grup/channel dan hapus semua percakapan bot/PM secara instan tanpa batas jumlah chat</p>
               </div>
             </div>
 
             <div class="tool-body-lux">
               <div class="form-group">
+                <div style="background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: var(--radius-sm); padding: 12px 14px; font-size: 0.85rem; color: var(--text-primary); margin-bottom: 12px;">
+                  ⚡ <strong>Delete All Instant (Tanpa Batas Chat):</strong> Sistem otomatis mengambil dan menghapus <strong>seluruh</strong> dialog chat yang ada di akun sekaligus secara paralel (tanpa batasan jumlah chat & tanpa jeda).
+                </div>
                 <label class="form-label">Filter Kategori Pembersihan</label>
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; background: rgba(0,0,0,0.25); padding: 14px; border-radius: var(--radius-sm); border: 1px solid var(--border-color);">
                   <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
@@ -819,11 +822,11 @@ Halo semuanya, selamat beraktivitas ya</textarea>
                     <span>🤖 Hapus Percakapan Bot</span>
                   </label>
                   <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
-                    <input type="checkbox" id="clean-filter-pms">
+                    <input type="checkbox" id="clean-filter-pms" checked>
                     <span>💬 Hapus Chat Pribadi (PM)</span>
                   </label>
                 </div>
-                <div class="form-help" style="color: var(--accent-amber); margin-top: 8px;">⚠️ Tindakan ini akan meninggalkan grup/channel dan menghapus dialog chat secara permanen.</div>
+                <div class="form-help" style="color: var(--accent-amber); margin-top: 8px;">⚠️ Tindakan ini akan meninggalkan grup/channel dan menghapus seluruh dialog chat secara permanen.</div>
               </div>
 
               <div class="form-group">
@@ -850,20 +853,9 @@ Halo semuanya, selamat beraktivitas ya</textarea>
                 </div>
               </div>
 
-              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
-                <div class="form-group">
-                  <label class="form-label" for="clean-max-dialogs">Batas Chat Diperiksa</label>
-                  <input type="number" id="clean-max-dialogs" class="form-input" value="100" min="10" max="500">
-                </div>
-                <div class="form-group">
-                  <label class="form-label" for="clean-delay">Jeda Antar Chat (Detik)</label>
-                  <input type="number" id="clean-delay" class="form-input" value="0.8" step="0.1" min="0.2" max="10">
-                </div>
-              </div>
-
               <div style="display: flex; gap: 10px; width: 100%;">
                 <button class="btn btn-danger" style="flex: 1;" id="start-clean-btn">
-                  <span>🧹 Mulai Pembersihan Chat</span>
+                  <span>⚡ Bersihkan Semua Chat Sekarang (Instan)</span>
                 </button>
                 <button class="btn btn-secondary" style="display: none; padding: 10px 18px; font-weight: 600; border-color: var(--accent-rose); color: var(--accent-rose);" id="cancel-clean-btn">
                   <span>⛔ Hentikan</span>
@@ -1202,8 +1194,8 @@ Halo semuanya, selamat beraktivitas ya</textarea>
   <div id="toast-container"></div>
 
   <!-- Scripts -->
-  <script src="/static/js/app.js?v=20261103c"></script>
-  <script src="/static/js/accounts.js?v=20261103c"></script>
-  <script src="/static/js/telegram-login.js?v=20261103c"></script>
+  <script src="/static/js/app.js?v=20261103d"></script>
+  <script src="/static/js/accounts.js?v=20261103d"></script>
+  <script src="/static/js/telegram-login.js?v=20261103d"></script>
 </body>
 </html>

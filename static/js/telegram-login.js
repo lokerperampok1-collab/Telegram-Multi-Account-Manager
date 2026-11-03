@@ -1174,20 +1174,17 @@ document.addEventListener('DOMContentLoaded', () => {
         }
       }
 
-      if (!confirm('⚠️ PERINGATAN: Tindakan ini akan meninggalkan grup/channel dan menghapus dialog chat secara permanen dari akun terpilih. Apakah Anda yakin ingin melanjutkan?')) {
+      if (!confirm('⚠️ PERINGATAN: Tindakan ini akan meninggalkan seluruh grup/channel dan menghapus semua dialog chat secara permanen dan instan dari akun terpilih. Lanjutkan?')) {
         return;
       }
 
-      const maxDialogs = parseInt(cleanMaxDialogs.value) || 100;
-      const delayChat = parseFloat(cleanDelay.value) || 0.8;
-
       startCleanBtn.disabled = true;
-      startCleanBtn.innerHTML = '<div class="spinner"></div> Membersihkan chat...';
+      startCleanBtn.innerHTML = '<div class="spinner"></div> Menghapus semua chat secara instan...';
       cleanResults.style.display = 'flex';
-      cleanResults.innerHTML = '<div style="color: var(--text-secondary); padding: 8px;">Memindai dan membersihkan percakapan Telegram...</div>';
+      cleanResults.innerHTML = '<div style="color: var(--text-secondary); padding: 8px;">Mengeksekusi penghapusan seluruh percakapan Telegram secara instan...</div>';
 
       if (window.OperationManager) {
-        window.OperationManager.setRunning('Bersihkan Chat Akun Massal', 'cancel-clean-btn');
+        window.OperationManager.setRunning('Bersihkan Semua Chat Instan', 'cancel-clean-btn');
       }
 
       try {
@@ -1200,8 +1197,9 @@ document.addEventListener('DOMContentLoaded', () => {
             leave_channels: leaveChannels,
             delete_bots: deleteBots,
             delete_pms: deletePms,
-            max_dialogs: maxDialogs,
-            delay_chat: delayChat
+            max_dialogs: null,
+            delay_chat: 0,
+            delay_account: 0
           })
         });
         const data = await res.json();
@@ -1211,7 +1209,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const isOk = r.status === 'success';
             const isCancelled = r.status === 'cancelled';
             const badgeClass = isCancelled ? 'waiting' : (isOk ? 'success' : 'error');
-            const badgeText = isCancelled ? '⛔ Dihentikan' : (isOk ? 'Selesai' : 'Gagal');
+            const badgeText = isCancelled ? '⛔ Dihentikan' : (isOk ? 'Bersih' : 'Gagal');
 
             return `
               <div class="bulk-item">
@@ -1226,7 +1224,7 @@ document.addEventListener('DOMContentLoaded', () => {
             `;
           }).join('');
 
-          showToast('Proses pembersihan chat selesai!', 'success');
+          showToast('Semua chat berhasil dibersihkan secara instan!', 'success');
           if (window.loadAccounts) window.loadAccounts();
         } else {
           cleanResults.innerHTML = `<div style="color: var(--accent-rose); padding: 8px;">${data.detail || 'Gagal membersihkan chat'}</div>`;
@@ -1235,7 +1233,7 @@ document.addEventListener('DOMContentLoaded', () => {
         showToast('Koneksi server gagal', 'error');
       } finally {
         startCleanBtn.disabled = false;
-        startCleanBtn.innerHTML = '<span>🧹 Mulai Pembersihan Chat</span>';
+        startCleanBtn.innerHTML = '<span>⚡ Bersihkan Semua Chat Sekarang (Instan)</span>';
         if (window.OperationManager) {
           window.OperationManager.setFinished('cancel-clean-btn');
         }

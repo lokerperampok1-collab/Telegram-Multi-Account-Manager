@@ -1910,12 +1910,12 @@ class ClientManager:
         leave_groups: bool = True,
         leave_channels: bool = True,
         delete_bots: bool = True,
-        delete_pms: bool = False,
-        max_dialogs: int = 100,
-        delay_chat: float = 0.8,
+        delete_pms: bool = True,
+        max_dialogs: Optional[int] = None,
+        delay_chat: float = 0.0,
         op_id: Optional[str] = None
     ) -> dict:
-        """Iterates through dialogs and deletes / leaves them based on filter settings."""
+        """Fetches all dialogs (unlimited by default) and deletes / leaves them instantly in parallel batches."""
         stats = {
             "groups_left": 0,
             "channels_left": 0,
@@ -1928,36 +1928,47 @@ class ClientManager:
         try:
             dialogs = await client.get_dialogs(limit=max_dialogs)
 
+            targets = []
             for dialog in dialogs:
-                if op_id and self._is_cancelled(op_id):
-                    break
-
-                should_delete = False
-                category = ""
-
-                # Check if group
                 if dialog.is_group:
                     if leave_groups:
-                        should_delete = True
-                        category = "group"
-                # Check if channel (not a group)
+                        targets.append((dialog, "group"))
                 elif dialog.is_channel:
                     if leave_channels:
-                        should_delete = True
-                        category = "channel"
-                # Check if user
+                        targets.append((dialog, "channel"))
                 elif dialog.is_user:
                     is_bot = getattr(dialog.entity, 'bot', False)
                     if is_bot and delete_bots:
-                        should_delete = True
-                        category = "bot"
+                        targets.append((dialog, "bot"))
                     elif not is_bot and delete_pms:
-                        should_delete = True
-                        category = "pm"
+                        targets.append((dialog, "pm"))
 
-                if should_delete:
-                    try:
-                        await client.delete_dialog(dialog.input_entity, revoke=False)
+            if not targets:
+                return {
+                    "status": "success",
+                    "stats": stats,
+                    "message": "Tidak ada chat/grup/channel yang perlu dibersihkan (0 dialog)."
+                }
+
+            batch_size = 25 if delay_chat <= 0 else 1
+            for i in range(0, len(targets), batch_size):
+                if op_id and self._is_cancelled(op_id):
+                    break
+
+                batch = targets[i:i + batch_size]
+                tasks = [
+                    client.delete_dialog(d.input_entity, revoke=False)
+                    for d, _ in batch
+                ]
+                batch_results = await asyncio.gather(*tasks, return_exceptions=True)
+
+                flood_err = None
+                for (_, category), res in zip(batch, batch_results):
+                    if isinstance(res, FloodWaitError):
+                        flood_err = res
+                    elif isinstance(res, Exception):
+                        stats["errors"] += 1
+                    else:
                         stats["total_cleaned"] += 1
                         if category == "group":
                             stats["groups_left"] += 1
@@ -1968,21 +1979,20 @@ class ClientManager:
                         elif category == "pm":
                             stats["pms_deleted"] += 1
 
-                        if delay_chat > 0:
-                            await self._interruptible_sleep(delay_chat, op_id)
-                    except FloodWaitError as e:
-                        return {
-                            "status": "flood_wait",
-                            "stats": stats,
-                            "message": f"FloodWait: Dihentikan sementara, tunggu {e.seconds} detik."
-                        }
-                    except Exception:
-                        stats["errors"] += 1
+                if flood_err is not None:
+                    return {
+                        "status": "flood_wait",
+                        "stats": stats,
+                        "message": f"FloodWait setelah {stats['total_cleaned']} chat dibersihkan: tunggu {flood_err.seconds} detik."
+                    }
+
+                if delay_chat > 0 and (i + batch_size) < len(targets):
+                    await self._interruptible_sleep(delay_chat, op_id)
 
             return {
                 "status": "success",
                 "stats": stats,
-                "message": f"Selesai: {stats['groups_left']} grup, {stats['channels_left']} channel, {stats['bots_deleted']} bot, {stats['pms_deleted']} PM dibersihkan."
+                "message": f"Selesai instan ({stats['total_cleaned']} chat): {stats['groups_left']} grup, {stats['channels_left']} channel, {stats['bots_deleted']} bot, {stats['pms_deleted']} PM dibersihkan."
             }
         except Exception as e:
             return {
@@ -1997,11 +2007,11 @@ class ClientManager:
         leave_groups: bool = True,
         leave_channels: bool = True,
         delete_bots: bool = True,
-        delete_pms: bool = False,
+        delete_pms: bool = True,
         account_ids: Optional[list[int]] = None,
-        max_dialogs: int = 100,
-        delay_chat: float = 0.8,
-        delay_account: int = 2
+        max_dialogs: Optional[int] = None,
+        delay_chat: float = 0.0,
+        delay_account: int = 0
     ) -> list[dict]:
         """Cleans dialogs across specified or all user accounts."""
         op_id = f"clean_{uuid.uuid4().hex[:8]}"

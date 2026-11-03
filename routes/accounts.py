@@ -354,14 +354,14 @@ class CleanDialogsRequest(BaseModel):
     leave_groups: bool = True
     leave_channels: bool = True
     delete_bots: bool = True
-    delete_pms: bool = False
-    max_dialogs: int = Field(default=100, ge=1, le=500)
-    delay_chat: float = Field(default=0.8, ge=0.1, le=10.0)
-    delay_account: int = Field(default=2, ge=0, le=60)
+    delete_pms: bool = True
+    max_dialogs: Optional[int] = None
+    delay_chat: float = Field(default=0.0, ge=0.0, le=10.0)
+    delay_account: int = Field(default=0, ge=0, le=60)
 
 @router.post("/clean-dialogs")
 async def clean_dialogs(req: CleanDialogsRequest, current_user: dict = Depends(get_current_user)):
-    """Cleans Telegram dialogs (groups, channels, bots, pms) across selected or all accounts."""
+    """Cleans all Telegram dialogs (groups, channels, bots, pms) instantly across selected or all accounts."""
     if not any([req.leave_groups, req.leave_channels, req.delete_bots, req.delete_pms]):
         raise HTTPException(status_code=400, detail="Pilih minimal satu filter pembersihan (Grup, Channel, Bot, atau PM)")
 
