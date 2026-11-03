@@ -259,7 +259,7 @@ async def upload_sessions(
         raise HTTPException(status_code=400, detail="File yang diunggah kosong")
 
     twofa_pwd = twofa_password.strip() if twofa_password else None
-    res = await client_manager.import_uploaded_sessions(current_user["id"], files_data, default_twofa_password=twofa_pwd)
+    res = await client_manager.import_uploaded_sessions(current_user["id"], files_data, twofa_password=twofa_pwd)
     return res
 
 # ----------------- Mass Profile Manager -----------------

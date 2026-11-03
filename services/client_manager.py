@@ -1750,9 +1750,17 @@ class ClientManager:
                 await asyncio.sleep(0.5)
         return results
 
-    async def import_uploaded_sessions(self, user_id: int, files_data: list[tuple[str, bytes]], twofa_password: Optional[str] = None) -> dict:
+    async def import_uploaded_sessions(
+        self,
+        user_id: int,
+        files_data: list[tuple[str, bytes]],
+        twofa_password: Optional[str] = None,
+        default_twofa_password: Optional[str] = None
+    ) -> dict:
         """Parses and imports multiple uploaded session files (.session, .zip, .txt, .json)."""
         from services.session_importer import extract_sessions_from_file
+
+        effective_twofa = twofa_password or default_twofa_password
 
         all_extracted = []
         for filename, content in files_data:
@@ -1781,7 +1789,7 @@ class ClientManager:
         failed_count = 0
 
         for label, s in unique_sessions:
-            res = await self.import_session_string(user_id, s, twofa_password=twofa_password)
+            res = await self.import_session_string(user_id, s, twofa_password=effective_twofa)
             res["source_file"] = label
             if res.get("status") == "success":
                 success_count += 1
