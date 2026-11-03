@@ -1653,9 +1653,12 @@ class ClientManager:
 
     # ------------------ Session Export & Import ------------------
 
-    async def export_sessions(self, user_id: int) -> list[dict]:
-        """Returns decrypted StringSessions of all accounts for backup/export."""
+    async def export_sessions(self, user_id: int, account_ids: Optional[list[int]] = None) -> list[dict]:
+        """Returns decrypted StringSessions of all or selected accounts for backup/export."""
         accounts = await TelegramAccountModel.list_by_user_with_sessions(user_id)
+        if account_ids is not None:
+            id_set = set(account_ids)
+            accounts = [acc for acc in accounts if acc["id"] in id_set]
         exported = []
         for acc in accounts:
             raw_session = ""

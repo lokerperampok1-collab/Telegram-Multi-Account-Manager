@@ -207,10 +207,36 @@ async def get_account_otp(account_id: int, current_user: dict = Depends(get_curr
 
 # ----------------- Export & Import Sessions -----------------
 
+class ExportSessionsRequest(BaseModel):
+    account_ids: Optional[List[int]] = None
+
+def _parse_ids_query(ids: Optional[str]) -> Optional[List[int]]:
+    if not ids or not ids.strip():
+        return None
+    parsed = []
+    for part in ids.split(","):
+        part = part.strip()
+        if part.isdigit():
+            parsed.append(int(part))
+    return parsed
+
 @router.get("/export/json")
-async def export_json(current_user: dict = Depends(get_current_user)):
-    """Exports all accounts with decrypted StringSessions as downloadable JSON."""
-    data = await client_manager.export_sessions(current_user["id"])
+async def export_json(ids: Optional[str] = None, current_user: dict = Depends(get_current_user)):
+    """Exports all or selected accounts with decrypted StringSessions as downloadable JSON."""
+    parsed_ids = _parse_ids_query(ids)
+    data = await client_manager.export_sessions(current_user["id"], account_ids=parsed_ids)
+    json_str = json.dumps(data, indent=2)
+    return Response(
+        content=json_str,
+        media_type="application/json",
+        headers={"Content-Disposition": "attachment; filename=telegram_sessions_backup.json"}
+    )
+
+@router.post("/export/json")
+async def export_json_post(req: Optional[ExportSessionsRequest] = None, current_user: dict = Depends(get_current_user)):
+    """Exports all or selected accounts with decrypted StringSessions as downloadable JSON via POST."""
+    target_ids = req.account_ids if req else None
+    data = await client_manager.export_sessions(current_user["id"], account_ids=target_ids)
     json_str = json.dumps(data, indent=2)
     return Response(
         content=json_str,
@@ -219,9 +245,23 @@ async def export_json(current_user: dict = Depends(get_current_user)):
     )
 
 @router.get("/export/txt")
-async def export_txt(current_user: dict = Depends(get_current_user)):
+async def export_txt(ids: Optional[str] = None, current_user: dict = Depends(get_current_user)):
     """Exports raw StringSessions one per line as downloadable TXT."""
-    data = await client_manager.export_sessions(current_user["id"])
+    parsed_ids = _parse_ids_query(ids)
+    data = await client_manager.export_sessions(current_user["id"], account_ids=parsed_ids)
+    txt_lines = [item["session_string"] for item in data if item.get("session_string")]
+    txt_content = "\n".join(txt_lines)
+    return Response(
+        content=txt_content,
+        media_type="text/plain",
+        headers={"Content-Disposition": "attachment; filename=telegram_sessions_backup.txt"}
+    )
+
+@router.post("/export/txt")
+async def export_txt_post(req: Optional[ExportSessionsRequest] = None, current_user: dict = Depends(get_current_user)):
+    """Exports raw StringSessions of all or selected accounts one per line as downloadable TXT via POST."""
+    target_ids = req.account_ids if req else None
+    data = await client_manager.export_sessions(current_user["id"], account_ids=target_ids)
     txt_lines = [item["session_string"] for item in data if item.get("session_string")]
     txt_content = "\n".join(txt_lines)
     return Response(

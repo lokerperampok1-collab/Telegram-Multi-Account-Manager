@@ -553,28 +553,183 @@ async function checkAllAccounts2FA() {
 
 // ----------------- Export Sessions Logic -----------------
 
+let cachedExportAccounts = [];
+let selectedExportAccountIds = new Set();
+
+function updateExportFormatUI() {
+  const txtRadio = document.getElementById('export-format-txt');
+  const jsonRadio = document.getElementById('export-format-json');
+  const txtLabel = document.getElementById('export-fmt-txt-label');
+  const jsonLabel = document.getElementById('export-fmt-json-label');
+  const copyBtn = document.getElementById('export-copy-clipboard-btn');
+
+  const isTxt = txtRadio && txtRadio.checked;
+  if (txtLabel) {
+    txtLabel.style.border = isTxt ? '2px solid var(--accent-cyan)' : '1px solid var(--border-color)';
+    txtLabel.style.background = isTxt ? 'rgba(0, 212, 255, 0.12)' : 'rgba(255, 255, 255, 0.03)';
+  }
+  if (jsonLabel) {
+    jsonLabel.style.border = !isTxt ? '2px solid var(--accent-cyan)' : '1px solid var(--border-color)';
+    jsonLabel.style.background = !isTxt ? 'rgba(0, 212, 255, 0.12)' : 'rgba(255, 255, 255, 0.03)';
+  }
+  if (copyBtn) {
+    copyBtn.innerHTML = isTxt ? '<span>📋 Salin String ke Clipboard</span>' : '<span>📋 Salin JSON ke Clipboard</span>';
+  }
+}
+
+function updateExportCountBadge() {
+  const countEl = document.getElementById('export-selected-count');
+  if (countEl) {
+    countEl.textContent = `${selectedExportAccountIds.size} dari ${cachedExportAccounts.length} akun dipilih`;
+  }
+}
+
+function renderExportChecklist(accounts) {
+  const container = document.getElementById('export-account-items');
+  if (!container) return;
+
+  if (!accounts || accounts.length === 0) {
+    container.innerHTML = '<div style="color: var(--text-muted); font-size: 0.82rem; padding: 6px;">Tidak ada akun yang cocok</div>';
+    updateExportCountBadge();
+    return;
+  }
+
+  container.innerHTML = accounts.map(acc => {
+    const name = acc.display_name || acc.username || acc.phone_number || `Akun #${acc.id}`;
+    const isOnline = acc.is_active;
+    const isChecked = selectedExportAccountIds.has(acc.id);
+    const tgIdBadge = acc.telegram_id ? `<span style="color: var(--accent-cyan); font-size: 0.72rem;">[ID: ${acc.telegram_id}]</span>` : '';
+    const twofaBadge = acc.twofa_password
+      ? `<span style="color: var(--accent-green); font-size: 0.72rem;">[2FA: ${escapeHtml(acc.twofa_password)}]</span>`
+      : '';
+
+    return `
+      <label style="display: flex; align-items: center; gap: 8px; font-size: 0.82rem; padding: 5px 6px; margin-bottom: 3px; border-radius: 6px; cursor: pointer; background: rgba(255,255,255,0.02);">
+        <input type="checkbox" class="export-acc-checkbox" value="${acc.id}" ${isChecked ? 'checked' : ''} onchange="toggleExportAccountSelection(${acc.id}, this.checked)">
+        <span style="flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+          <strong>${escapeHtml(name)}</strong> (${escapeHtml(acc.phone_number || '-')}) ${tgIdBadge} ${twofaBadge}
+        </span>
+        ${isOnline ? '<span style="color: var(--accent-green); font-size: 0.75rem;">● Online</span>' : '<span style="color: var(--text-muted); font-size: 0.75rem;">○ Offline</span>'}
+      </label>
+    `;
+  }).join('');
+
+  updateExportCountBadge();
+}
+
+window.toggleExportAccountSelection = function(accId, checked) {
+  if (checked) {
+    selectedExportAccountIds.add(accId);
+  } else {
+    selectedExportAccountIds.delete(accId);
+  }
+  updateExportCountBadge();
+};
+
+window.openExportModal = async function(defaultFormat = 'txt') {
+  const modal = document.getElementById('export-modal');
+  const txtRadio = document.getElementById('export-format-txt');
+  const jsonRadio = document.getElementById('export-format-json');
+  const searchInput = document.getElementById('export-search-accounts');
+  const container = document.getElementById('export-account-items');
+
+  if (defaultFormat === 'json' && jsonRadio) {
+    jsonRadio.checked = true;
+  } else if (txtRadio) {
+    txtRadio.checked = true;
+  }
+  updateExportFormatUI();
+
+  if (searchInput) searchInput.value = '';
+  if (modal) {
+    modal.style.display = 'flex';
+    modal.classList.add('active');
+  }
+
+  if (container) {
+    container.innerHTML = '<div style="color: var(--text-muted); font-size: 0.82rem; padding: 8px;"><div class="spinner" style="width:14px;height:14px;display:inline-block;"></div> Memuat daftar akun...</div>';
+  }
+
+  try {
+    const res = await fetch('/api/accounts?limit=0', { headers: getAuthHeaders() });
+    const data = await res.json();
+    cachedExportAccounts = data.accounts || [];
+    // Default: pilih semua akun terlebih dahulu agar praktis, user tinggal uncheck atau klik Batal Semua lalu centang akun tertentu
+    selectedExportAccountIds = new Set(cachedExportAccounts.map(a => a.id));
+    renderExportChecklist(cachedExportAccounts);
+  } catch (e) {
+    if (container) {
+      container.innerHTML = '<div style="color: var(--accent-rose); font-size: 0.82rem; padding: 8px;">Gagal memuat daftar akun</div>';
+    }
+  }
+};
+
+window.closeExportModal = function() {
+  const modal = document.getElementById('export-modal');
+  if (modal) {
+    modal.classList.remove('active');
+    modal.style.display = 'none';
+  }
+};
+
 async function triggerExport(format) {
-  showToast(`Menyiapkan export format ${format.toUpperCase()}...`, 'info');
+  window.openExportModal(format || 'txt');
+}
+window.triggerExport = triggerExport;
+
+async function executeExportAction(actionType = 'download') {
+  if (selectedExportAccountIds.size === 0) {
+    showToast('Pilih minimal 1 akun yang ingin di-export', 'warning');
+    return;
+  }
+
+  const txtRadio = document.getElementById('export-format-txt');
+  const format = (txtRadio && txtRadio.checked) ? 'txt' : 'json';
+  const accountIds = Array.from(selectedExportAccountIds);
+
+  const downloadBtn = document.getElementById('export-download-submit-btn');
+  const copyBtn = document.getElementById('export-copy-clipboard-btn');
+  if (downloadBtn) downloadBtn.disabled = true;
+  if (copyBtn) copyBtn.disabled = true;
+
   try {
     const res = await fetch(`/api/accounts/export/${format}`, {
-      headers: getAuthHeaders()
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ account_ids: accountIds })
     });
+
     if (!res.ok) {
-      showToast('Gagal mengunduh file backup', 'error');
+      showToast('Gagal mengekspor sesi akun', 'error');
       return;
     }
-    const blob = await res.blob();
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `telegram_sessions_backup.${format}`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    window.URL.revokeObjectURL(url);
-    showToast(`File backup .${format} berhasil diunduh!`, 'success');
+
+    if (actionType === 'copy') {
+      const textContent = await res.text();
+      if (!textContent || !textContent.trim()) {
+        showToast('Tidak ada data sesi untuk disalin', 'warning');
+        return;
+      }
+      await navigator.clipboard.writeText(textContent);
+      showToast(`Berhasil menyalin ${accountIds.length} sesi (${format.toUpperCase()}) ke clipboard!`, 'success');
+    } else {
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `telegram_sessions_${accountIds.length}_akun.${format}`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+      showToast(`File export ${accountIds.length} akun (.${format}) berhasil diunduh!`, 'success');
+      window.closeExportModal();
+    }
   } catch (e) {
-    showToast('Gagal export session', 'error');
+    showToast('Gagal mengekspor session', 'error');
+  } finally {
+    if (downloadBtn) downloadBtn.disabled = false;
+    if (copyBtn) copyBtn.disabled = false;
   }
 }
 
@@ -652,6 +807,80 @@ document.addEventListener('DOMContentLoaded', () => {
       e.preventDefault();
       triggerExport('txt');
     });
+  }
+
+  // Export Modal controls
+  const exportModal = document.getElementById('export-modal');
+  const exportModalClose = document.getElementById('export-modal-close');
+  const exportFormatTxt = document.getElementById('export-format-txt');
+  const exportFormatJson = document.getElementById('export-format-json');
+  const exportSelectAll = document.getElementById('export-select-all');
+  const exportSelectNone = document.getElementById('export-select-none');
+  const exportSelectOnline = document.getElementById('export-select-online');
+  const exportSearchInput = document.getElementById('export-search-accounts');
+  const exportDownloadBtn = document.getElementById('export-download-submit-btn');
+  const exportCopyBtn = document.getElementById('export-copy-clipboard-btn');
+
+  if (exportModalClose) {
+    exportModalClose.addEventListener('click', window.closeExportModal);
+  }
+  if (exportModal) {
+    exportModal.addEventListener('click', (e) => {
+      if (e.target === exportModal) window.closeExportModal();
+    });
+  }
+  if (exportFormatTxt) {
+    exportFormatTxt.addEventListener('change', updateExportFormatUI);
+  }
+  if (exportFormatJson) {
+    exportFormatJson.addEventListener('change', updateExportFormatUI);
+  }
+
+  function getFilteredExportAccounts() {
+    const q = (exportSearchInput ? exportSearchInput.value : '').toLowerCase().trim();
+    if (!q) return cachedExportAccounts;
+    return cachedExportAccounts.filter(acc => {
+      const name = (acc.display_name || '').toLowerCase();
+      const user = (acc.username || '').toLowerCase();
+      const phone = (acc.phone_number || '').toLowerCase();
+      const tgId = String(acc.telegram_id || '').toLowerCase();
+      return name.includes(q) || user.includes(q) || phone.includes(q) || tgId.includes(q);
+    });
+  }
+
+  if (exportSelectAll) {
+    exportSelectAll.addEventListener('click', () => {
+      const visible = getFilteredExportAccounts();
+      visible.forEach(acc => selectedExportAccountIds.add(acc.id));
+      renderExportChecklist(visible);
+    });
+  }
+  if (exportSelectNone) {
+    exportSelectNone.addEventListener('click', () => {
+      const visible = getFilteredExportAccounts();
+      visible.forEach(acc => selectedExportAccountIds.delete(acc.id));
+      renderExportChecklist(visible);
+    });
+  }
+  if (exportSelectOnline) {
+    exportSelectOnline.addEventListener('click', () => {
+      selectedExportAccountIds.clear();
+      cachedExportAccounts.forEach(acc => {
+        if (acc.is_active) selectedExportAccountIds.add(acc.id);
+      });
+      renderExportChecklist(getFilteredExportAccounts());
+    });
+  }
+  if (exportSearchInput) {
+    exportSearchInput.addEventListener('input', () => {
+      renderExportChecklist(getFilteredExportAccounts());
+    });
+  }
+  if (exportDownloadBtn) {
+    exportDownloadBtn.addEventListener('click', () => executeExportAction('download'));
+  }
+  if (exportCopyBtn) {
+    exportCopyBtn.addEventListener('click', () => executeExportAction('copy'));
   }
 
   // Search & Filter controls
