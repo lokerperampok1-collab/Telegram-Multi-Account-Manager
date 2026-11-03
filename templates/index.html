@@ -483,6 +483,12 @@
                 </button>
               </div>
 
+              <!-- Optional 2FA Password for Imported Sessions -->
+              <div class="form-group" style="margin-bottom: 14px;">
+                <label class="form-label" for="import-twofa-password">Sandi 2FA Sesi (Opsional — isi jika akun yang diimpor memiliki 2FA agar otomatis tersimpan)</label>
+                <input type="text" id="import-twofa-password" class="form-input" placeholder="Contoh: sandi 2FA akun (kosongkan jika tanpa 2FA / sudah ada di JSON)" autocomplete="off">
+              </div>
+
               <!-- PANE 1: Upload File Sesi (.session / .zip / .txt) -->
               <div id="pane-upload-files" class="session-import-pane">
                 <div class="upload-dropzone" id="session-dropzone">
@@ -1108,6 +1114,9 @@ Halo semuanya, selamat beraktivitas ya</textarea>
                 </svg>
                 <span id="copy-2fa-btn-text">Salin 2FA</span>
               </button>
+              <button class="btn btn-secondary btn-sm" id="otp-verify-custom-2fa-btn" title="Masukkan & simpan sandi 2FA akun ini" style="display: none;">
+                🔑 Isi / Simpan Sandi
+              </button>
               <button class="btn btn-danger btn-sm" id="otp-reset-2fa-inline-btn" title="Ajukan Reset Kata Sandi 2FA ke Telegram (Tunggu 7 Hari)" style="display: none;">
                 ⚠️ Reset 2FA (7 Hari)
               </button>
@@ -1193,8 +1202,8 @@ Halo semuanya, selamat beraktivitas ya</textarea>
   <div id="toast-container"></div>
 
   <!-- Scripts -->
-  <script src="/static/js/app.js?v=20261103b"></script>
-  <script src="/static/js/accounts.js?v=20261103b"></script>
-  <script src="/static/js/telegram-login.js?v=20261103b"></script>
+  <script src="/static/js/app.js?v=20261103c"></script>
+  <script src="/static/js/accounts.js?v=20261103c"></script>
+  <script src="/static/js/telegram-login.js?v=20261103c"></script>
 </body>
 </html>

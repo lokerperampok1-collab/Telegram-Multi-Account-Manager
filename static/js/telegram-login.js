@@ -928,6 +928,10 @@ document.addEventListener('DOMContentLoaded', () => {
       for (const file of selectedSessionFiles) {
         formData.append('files', file);
       }
+      const importTwofaInput = document.getElementById('import-twofa-password');
+      if (importTwofaInput && importTwofaInput.value.trim()) {
+        formData.append('twofa_password', importTwofaInput.value.trim());
+      }
 
       try {
         const token = localStorage.getItem('token');
@@ -1017,10 +1021,12 @@ document.addEventListener('DOMContentLoaded', () => {
       importResults.innerHTML = '<div style="color: var(--text-secondary); padding: 8px;">Memverifikasi dan menyimpan sesi akun...</div>';
 
       try {
+        const importTwofaInput = document.getElementById('import-twofa-password');
+        const twofaPwd = (importTwofaInput && importTwofaInput.value.trim()) ? importTwofaInput.value.trim() : null;
         const res = await fetch('/api/accounts/import-sessions', {
           method: 'POST',
           headers: getAuthHeaders(),
-          body: JSON.stringify({ sessions })
+          body: JSON.stringify({ sessions, twofa_password: twofaPwd })
         });
         const data = await res.json();
 

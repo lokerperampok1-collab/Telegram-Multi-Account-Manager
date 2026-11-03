@@ -180,7 +180,7 @@ class ClientManager:
         try:
             await client.sign_in(phone=phone, code=code, phone_code_hash=phone_code_hash)
             # Login successful without 2FA
-            return await self._finalize_login(token, client, user_id, phone)
+            return await self._finalize_login(token, client, user_id, phone, twofa_password=None, has_2fa=False)
         except SessionPasswordNeededError:
             session_data["status"] = "2fa_needed"
             return {
@@ -194,7 +194,7 @@ class ClientManager:
             return {"status": "error", "message": str(e)}
 
     async def verify_2fa(self, token: str, password: str) -> dict:
-        """Submits 2FA password to complete login."""
+        """Submits 2FA password to complete login and saves the 2FA password to database."""
         session_data = self._pending_logins.get(token)
         if not session_data:
             return {"status": "error", "message": "Login session expired or invalid"}
@@ -205,7 +205,7 @@ class ClientManager:
 
         try:
             await client.sign_in(password=password)
-            return await self._finalize_login(token, client, user_id, phone)
+            return await self._finalize_login(token, client, user_id, phone, twofa_password=password, has_2fa=True)
         except PasswordHashInvalidError:
             return {"status": "error", "message": "Incorrect 2FA password"}
         except Exception as e:
@@ -260,8 +260,8 @@ class ClientManager:
         try:
             # Wait up to 35 seconds for QR confirmation
             user = await qr_login.wait(timeout=35)
-            # Finalize login
-            res = await self._finalize_login(token, client, user_id, is_qr=True)
+            # Finalize login (no 2FA required)
+            res = await self._finalize_login(token, client, user_id, is_qr=True, twofa_password=None, has_2fa=False)
             record["status"] = res.get("status", "success")
             record["account_info"] = res
         except SessionPasswordNeededError:
@@ -325,8 +325,17 @@ class ClientManager:
 
     # ------------------ Finalization & Helper ------------------
 
-    async def _finalize_login(self, token: str, client: TelegramClient, user_id: int, phone: Optional[str] = None, is_qr: bool = False) -> dict:
-        """Finalizes authorized client, saves encrypted StringSession to DB, registers client."""
+    async def _finalize_login(
+        self,
+        token: str,
+        client: TelegramClient,
+        user_id: int,
+        phone: Optional[str] = None,
+        is_qr: bool = False,
+        twofa_password: Optional[str] = None,
+        has_2fa: Optional[bool] = None
+    ) -> dict:
+        """Finalizes authorized client, saves encrypted StringSession and 2FA password to DB, registers client."""
         try:
             me = await client.get_me()
             session_str = client.session.save()
@@ -346,6 +355,32 @@ class ClientManager:
                 telegram_id=me.id,
                 is_active=True
             )
+
+            # Save 2FA password if provided during login, or mark no_2fa if logged in without 2FA
+            if twofa_password is not None:
+                hint = None
+                try:
+                    pwd_info = await client(GetPasswordRequest())
+                    hint = getattr(pwd_info, 'hint', None)
+                except Exception:
+                    pass
+                await TelegramAccountModel.update_2fa_status(
+                    account_id=account_id,
+                    has_2fa=True,
+                    hint=hint,
+                    twofa_password=twofa_password,
+                    twofa_status="matched",
+                    twofa_reset_until=None
+                )
+            elif has_2fa is False:
+                await TelegramAccountModel.update_2fa_status(
+                    account_id=account_id,
+                    has_2fa=False,
+                    hint=None,
+                    twofa_password=None,
+                    twofa_status="no_2fa",
+                    twofa_reset_until=None
+                )
 
             # Disconnect existing client instance if any
             old_client = self._active_clients.get(account_id)
@@ -1083,8 +1118,8 @@ class ClientManager:
 
     # ------------------ 2FA Status Checker ------------------
 
-    async def check_account_2fa(self, account_id: int, user_id: int) -> dict:
-        """Queries Telegram to check if Two-Step Verification (2FA) is enabled and retrieves hint."""
+    async def check_account_2fa(self, account_id: int, user_id: int, custom_password: Optional[str] = None) -> dict:
+        """Queries Telegram to check if Two-Step Verification (2FA) is enabled, verifies saved/known passwords, and retrieves hint."""
         account = await TelegramAccountModel.get_by_id(account_id, user_id)
         if not account:
             return {"status": "error", "message": "Akun tidak ditemukan"}
@@ -1132,14 +1167,30 @@ class ClientManager:
                     "message": "2FA Tidak Aktif (Tanpa Password)"
                 }
 
-            # If 2FA is active, test saved password first, then candidate passwords: "0707", "26", and "7"
+            # Build candidate passwords:
+            # 1. Explicit custom password (if provided)
+            # 2. Password saved when logging in / adding account (twofa_password in DB)
+            # 3. Standard templates: "0707", "26", "7"
+            # 4. Any other distinct 2FA passwords saved across this user's accounts
             candidates = []
+            if custom_password and custom_password.strip():
+                candidates.append(custom_password.strip())
+
             saved_pwd = account.get("twofa_password")
-            if saved_pwd:
+            if saved_pwd and str(saved_pwd) not in candidates:
                 candidates.append(str(saved_pwd))
+
             for default_cand in ["0707", "26", "7"]:
                 if default_cand not in candidates:
                     candidates.append(default_cand)
+
+            try:
+                user_known_pwds = await TelegramAccountModel.get_distinct_2fa_passwords(user_id)
+                for kp in user_known_pwds:
+                    if kp not in candidates and len(candidates) < 8:
+                        candidates.append(kp)
+            except Exception:
+                pass
 
             matched_pwd = None
             for cand in candidates:
@@ -1156,7 +1207,7 @@ class ClientManager:
                     continue
 
             if matched_pwd:
-                # Jika akun sebelumnya memiliki pending reset tapi ternyata password cocok ("0707" / "7"),
+                # Jika akun sebelumnya memiliki pending reset tapi ternyata password cocok,
                 # batalkan pending reset tersebut agar akun kembali normal
                 if pending_reset_date:
                     try:
@@ -1182,10 +1233,10 @@ class ClientManager:
                     "twofa_status": "matched",
                     "twofa_reset_until": None,
                     "hint": hint,
-                    "message": f"2FA Aktif - Password Cocok: '{matched_pwd}'"
+                    "message": f"2FA Aktif - Sandi 2FA: '{matched_pwd}'"
                 }
 
-            # Neither "0707" nor "7" matched.
+            # None of the candidate passwords matched.
             # JANGAN LANGSUNG RESET! Cek apakah sudah ada pending_reset_date dari Telegram sebelumnya
             if pending_reset_date:
                 reset_until_str = pending_reset_date.strftime("%Y-%m-%d %H:%M:%S")
@@ -1207,10 +1258,10 @@ class ClientManager:
                     "twofa_status": "reset_pending",
                     "twofa_reset_until": reset_until_str,
                     "hint": hint,
-                    "message": f"Password salah (bukan 0707 / 7). Sedang menunggu reset: {reset_until_str}."
+                    "message": f"Sandi 2FA belum diketahui (bukan {', '.join(candidates)}). Sedang menunggu reset: {reset_until_str}."
                 }
 
-            # Password bukan 0707 / 7 dan belum di-reset
+            # Password belum diketahui dan belum di-reset
             await TelegramAccountModel.update_2fa_status(
                 account_id=account_id,
                 has_2fa=True,
@@ -1230,7 +1281,7 @@ class ClientManager:
                 "twofa_status": "mismatch",
                 "twofa_reset_until": None,
                 "hint": hint,
-                "message": "Password tidak cocok (bukan 0707 atau 7). Gunakan tombol Reset jika ingin mereset 2FA."
+                "message": f"Sandi 2FA belum tersimpan / tidak cocok dengan kandidat ({', '.join(candidates)})."
             }
         except (UserDeactivatedError, UserDeactivatedBanError, AuthKeyUnregisteredError):
             await TelegramAccountModel.update_status(account_id, False)
@@ -1466,6 +1517,14 @@ class ClientManager:
                 if default_cand not in candidates:
                     candidates.append(default_cand)
 
+            try:
+                user_known_pwds = await TelegramAccountModel.get_distinct_2fa_passwords(user_id)
+                for kp in user_known_pwds:
+                    if kp not in candidates and len(candidates) < 8:
+                        candidates.append(kp)
+            except Exception:
+                pass
+
             changed_from = None
             for cand in candidates:
                 try:
@@ -1611,11 +1670,14 @@ class ClientManager:
                 "username": acc.get("username"),
                 "telegram_id": acc.get("telegram_id"),
                 "is_active": bool(acc.get("is_active")),
+                "has_2fa": acc.get("has_2fa"),
+                "twofa_password": acc.get("twofa_password"),
+                "twofa_hint": acc.get("twofa_hint"),
                 "session_string": raw_session
             })
         return exported
 
-    async def import_session_string(self, user_id: int, session_str: str) -> dict:
+    async def import_session_string(self, user_id: int, session_str: str, twofa_password: Optional[str] = None) -> dict:
         """Validates and imports a single StringSession into database."""
         s = session_str.strip()
         if not s:
@@ -1646,6 +1708,16 @@ class ClientManager:
                 telegram_id=me.id,
                 is_active=True
             )
+            if twofa_password and twofa_password.strip():
+                await TelegramAccountModel.update_2fa_status(
+                    account_id=account_id,
+                    has_2fa=True,
+                    hint=None,
+                    twofa_password=twofa_password.strip(),
+                    twofa_status="matched",
+                    twofa_reset_until=None
+                )
+
             old_client = self._active_clients.get(account_id)
             if old_client and old_client != client:
                 try:
@@ -1667,18 +1739,18 @@ class ClientManager:
         except Exception as e:
             return {"status": "error", "message": f"Gagal memvalidasi StringSession: {str(e)}"}
 
-    async def import_bulk_sessions(self, user_id: int, session_strings: list[str]) -> list[dict]:
+    async def import_bulk_sessions(self, user_id: int, session_strings: list[str], twofa_password: Optional[str] = None) -> list[dict]:
         """Imports multiple StringSessions sequentially."""
         results = []
         for s in session_strings:
             cleaned = s.strip()
             if cleaned:
-                res = await self.import_session_string(user_id, cleaned)
+                res = await self.import_session_string(user_id, cleaned, twofa_password=twofa_password)
                 results.append(res)
                 await asyncio.sleep(0.5)
         return results
 
-    async def import_uploaded_sessions(self, user_id: int, files_data: list[tuple[str, bytes]]) -> dict:
+    async def import_uploaded_sessions(self, user_id: int, files_data: list[tuple[str, bytes]], twofa_password: Optional[str] = None) -> dict:
         """Parses and imports multiple uploaded session files (.session, .zip, .txt, .json)."""
         from services.session_importer import extract_sessions_from_file
 
@@ -1709,7 +1781,7 @@ class ClientManager:
         failed_count = 0
 
         for label, s in unique_sessions:
-            res = await self.import_session_string(user_id, s)
+            res = await self.import_session_string(user_id, s, twofa_password=twofa_password)
             res["source_file"] = label
             if res.get("status") == "success":
                 success_count += 1

@@ -17,6 +17,10 @@ class JoinGroupRequest(BaseModel):
 
 class ImportSessionsRequest(BaseModel):
     sessions: List[str]
+    twofa_password: Optional[str] = None
+
+class Check2FARequest(BaseModel):
+    password: Optional[str] = None
 
 # ----------------- Account CRUD -----------------
 
@@ -134,9 +138,14 @@ class Change2FARequest(BaseModel):
     delay_seconds: int = Field(default=1, ge=0, le=60)
 
 @router.post("/{account_id}/check-2fa")
-async def check_account_2fa(account_id: int, current_user: dict = Depends(get_current_user)):
+async def check_account_2fa(
+    account_id: int,
+    req: Optional[Check2FARequest] = None,
+    current_user: dict = Depends(get_current_user)
+):
     """Checks Two-Step Verification (2FA / Cloud Password) status for a single account."""
-    res = await client_manager.check_account_2fa(account_id, current_user["id"])
+    custom_pwd = req.password.strip() if (req and req.password) else None
+    res = await client_manager.check_account_2fa(account_id, current_user["id"], custom_password=custom_pwd)
     return res
 
 @router.post("/{account_id}/reset-2fa")
@@ -226,12 +235,14 @@ async def import_sessions(req: ImportSessionsRequest, current_user: dict = Depen
     """Imports one or more StringSessions directly into the dashboard."""
     if not req.sessions:
         raise HTTPException(status_code=400, detail="Tidak ada StringSession yang diberikan")
-    results = await client_manager.import_bulk_sessions(current_user["id"], req.sessions)
+    twofa_pwd = req.twofa_password.strip() if req.twofa_password else None
+    results = await client_manager.import_bulk_sessions(current_user["id"], req.sessions, twofa_password=twofa_pwd)
     return {"status": "success", "results": results}
 
 @router.post("/upload-sessions")
 async def upload_sessions(
     files: list[UploadFile] = File(...),
+    twofa_password: Optional[str] = Form(None),
     current_user: dict = Depends(get_current_user)
 ):
     """Uploads one or multiple Telethon session files (.session, .zip, .txt, .json) and imports them."""
@@ -247,7 +258,8 @@ async def upload_sessions(
     if not files_data:
         raise HTTPException(status_code=400, detail="File yang diunggah kosong")
 
-    res = await client_manager.import_uploaded_sessions(current_user["id"], files_data)
+    twofa_pwd = twofa_password.strip() if twofa_password else None
+    res = await client_manager.import_uploaded_sessions(current_user["id"], files_data, default_twofa_password=twofa_pwd)
     return res
 
 # ----------------- Mass Profile Manager -----------------

@@ -131,7 +131,8 @@ class TelegramAccountModel:
             db.row_factory = aiosqlite.Row
             cursor = await db.execute(
                 """
-                SELECT id, user_id, phone_number, display_name, username, telegram_id, is_active, last_connected, added_at
+                SELECT id, user_id, phone_number, display_name, username, telegram_id, is_active, last_connected, added_at,
+                       has_2fa, twofa_hint, twofa_password, twofa_status, twofa_reset_until
                 FROM telegram_accounts
                 WHERE user_id = ?
                 ORDER BY id DESC
@@ -304,7 +305,8 @@ class TelegramAccountModel:
             db.row_factory = aiosqlite.Row
             cursor = await db.execute(
                 """
-                SELECT id, user_id, phone_number, display_name, username, telegram_id, session_string, is_active, last_connected, added_at
+                SELECT id, user_id, phone_number, display_name, username, telegram_id, session_string, is_active, last_connected, added_at,
+                       has_2fa, twofa_hint, twofa_password, twofa_status, twofa_reset_until
                 FROM telegram_accounts
                 WHERE user_id = ?
                 ORDER BY id DESC
@@ -313,6 +315,21 @@ class TelegramAccountModel:
             )
             rows = await cursor.fetchall()
             return [dict(r) for r in rows]
+
+    @staticmethod
+    async def get_distinct_2fa_passwords(user_id: int) -> List[str]:
+        """Returns distinct non-empty 2FA passwords saved across this user's accounts."""
+        async with aiosqlite.connect(settings.DB_PATH) as db:
+            cursor = await db.execute(
+                """
+                SELECT DISTINCT twofa_password
+                FROM telegram_accounts
+                WHERE user_id = ? AND twofa_password IS NOT NULL AND twofa_password != ''
+                """,
+                (user_id,)
+            )
+            rows = await cursor.fetchall()
+            return [str(r[0]) for r in rows if r and r[0]]
 
     @staticmethod
     async def update_display_name(account_id: int, display_name: str):
