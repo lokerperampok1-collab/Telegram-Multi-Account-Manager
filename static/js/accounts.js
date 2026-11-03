@@ -845,7 +845,7 @@ document.addEventListener('DOMContentLoaded', () => {
   if (checkDevicesFromOtpBtn) {
     checkDevicesFromOtpBtn.addEventListener('click', () => {
       if (!currentOtpAccountId) return;
-      const accName = document.getElementById('otp-account-name')?.textContent || 'Akun';
+      const accName = document.getElementById('otp-modal-account-title')?.textContent || 'Akun';
       openDevicesModal(currentOtpAccountId, accName, currentOtpPhone || '-');
     });
   }
@@ -1190,24 +1190,28 @@ function openDevicesModal(accountId, displayName, phoneNumber) {
   const modal = document.getElementById('devices-modal');
   if (!modal) return;
 
-  const nameEl = document.getElementById('devices-account-name');
-  const phoneEl = document.getElementById('devices-account-phone');
-  if (nameEl) nameEl.textContent = displayName || `Akun #${accountId}`;
-  if (phoneEl) phoneEl.textContent = phoneNumber || '-';
+  const nameEl = document.getElementById('devices-modal-title') || document.getElementById('devices-account-name');
+  const phoneEl = document.getElementById('devices-modal-phone') || document.getElementById('devices-account-phone');
+  if (nameEl) nameEl.textContent = `Perangkat: ${displayName || 'Akun #' + accountId}`;
+  if (phoneEl) phoneEl.textContent = `Nomor: ${phoneNumber || '-'}`;
 
+  modal.style.display = 'flex';
   modal.classList.add('active');
   loadAccountDevices(accountId);
 }
 
 function closeDevicesModal() {
   const modal = document.getElementById('devices-modal');
-  if (modal) modal.classList.remove('active');
+  if (modal) {
+    modal.style.display = 'none';
+    modal.classList.remove('active');
+  }
   currentDevicesAccountId = null;
 }
 
 async function loadAccountDevices(accountId) {
   const listEl = document.getElementById('devices-list');
-  const countPill = document.getElementById('devices-count-pill');
+  const countPill = document.getElementById('devices-count-badge') || document.getElementById('devices-count-pill');
   if (!listEl) return;
 
   listEl.innerHTML = `
@@ -1225,12 +1229,13 @@ async function loadAccountDevices(accountId) {
     });
     const data = await res.json();
 
-    if (!res.ok) {
+    if (!res.ok || data.status === 'error') {
+      const errMsg = data.detail || data.message || 'Terjadi kesalahan saat mengambil perangkat';
       listEl.innerHTML = `
         <div style="text-align: center; padding: 35px 20px; color: var(--accent-rose);">
           <div style="font-size: 2.2rem; margin-bottom: 8px;">⚠️</div>
           <p style="font-weight: 600;">Gagal mengambil perangkat</p>
-          <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: 4px;">${escapeHtml(data.detail || 'Terjadi kesalahan')}</p>
+          <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: 4px;">${escapeHtml(errMsg)}</p>
           <button class="btn btn-secondary btn-sm" onclick="loadAccountDevices(${accountId})" style="margin-top: 14px;">Coba Lagi</button>
         </div>
       `;
@@ -1245,18 +1250,23 @@ async function loadAccountDevices(accountId) {
       listEl.innerHTML = `
         <div style="text-align: center; padding: 35px 20px; color: var(--text-muted);">
           <div style="font-size: 2rem; margin-bottom: 8px;">📱</div>
-          <p>Tidak ada perangkat lain yang terdeteksi.</p>
+          <p>Tidak ada perangkat yang terdeteksi.</p>
         </div>
       `;
       return;
     }
 
+    const cleanVal = (v) => (v && v !== '-' && v !== 'Tidak diketahui') ? v : '';
+
     listEl.innerHTML = authorizations.map(dev => {
       const isCurrent = !!dev.current;
-      const deviceTitle = [dev.device_model, dev.platform].filter(Boolean).join(' • ') || 'Perangkat Tidak Dikenal';
-      const appInfo = [dev.app_name, dev.app_version].filter(Boolean).join(' ') || '-';
-      const location = [dev.country, dev.region].filter(Boolean).join(', ') || 'Lokasi tidak diketahui';
-      const ip = dev.ip || '-';
+      const titleParts = [cleanVal(dev.device_model), cleanVal(dev.platform), cleanVal(dev.system_version)].filter(Boolean);
+      const deviceTitle = titleParts.join(' • ') || 'Perangkat Tidak Dikenal';
+      const appParts = [cleanVal(dev.app_name), cleanVal(dev.app_version)].filter(Boolean);
+      const appInfo = appParts.join(' v') || 'Telegram App';
+      const locParts = [cleanVal(dev.country), cleanVal(dev.region)].filter(Boolean);
+      const location = locParts.join(', ') || 'Lokasi tidak diketahui';
+      const ip = (dev.ip && dev.ip !== '-') ? dev.ip : 'Disembunyikan Telegram';
       const lastActive = dev.date_active || '-';
       const created = dev.date_created || '-';
 
@@ -1264,34 +1274,34 @@ async function loadAccountDevices(accountId) {
         <div class="device-card ${isCurrent ? 'current-device' : ''}">
           <div class="device-card-header">
             <div>
-              <div class="device-model-name">${escapeHtml(deviceTitle)}</div>
-              <div class="device-app-name">${escapeHtml(appInfo)}</div>
+              <div class="device-name">${escapeHtml(deviceTitle)}</div>
+              <div class="device-app">📱 ${escapeHtml(appInfo)}${dev.official_app ? ' (Resmi)' : ''}</div>
             </div>
             <div>
               ${isCurrent
-                ? `<span class="device-badge-current">● Sesi Ini (Script/Bot)</span>`
+                ? `<span class="device-badge-current">● Sesi Ini (Web/Bot)</span>`
                 : `<span class="device-badge-other">Perangkat Lain</span>`}
             </div>
           </div>
           <div class="device-card-details">
-            <div class="device-detail-item">
-              <span class="device-detail-label">IP Address</span>
-              <span class="device-detail-value">${escapeHtml(ip)}</span>
+            <div class="device-detail-col">
+              <span class="detail-label">Lokasi</span>
+              <span class="detail-val">${escapeHtml(location)}</span>
             </div>
-            <div class="device-detail-item">
-              <span class="device-detail-label">Lokasi</span>
-              <span class="device-detail-value">${escapeHtml(location)}</span>
+            <div class="device-detail-col">
+              <span class="detail-label">IP Address</span>
+              <span class="detail-val">${escapeHtml(ip)}</span>
             </div>
-            <div class="device-detail-item">
-              <span class="device-detail-label">Aktif Terakhir</span>
-              <span class="device-detail-value">${escapeHtml(lastActive)}</span>
+            <div class="device-detail-col">
+              <span class="detail-label">Aktif Terakhir</span>
+              <span class="detail-val">${escapeHtml(lastActive)}</span>
             </div>
-            <div class="device-detail-item">
-              <span class="device-detail-label">Sesi Dibuat</span>
-              <span class="device-detail-value">${escapeHtml(created)}</span>
+            <div class="device-detail-col">
+              <span class="detail-label">Sesi Dibuat</span>
+              <span class="detail-val">${escapeHtml(created)}</span>
             </div>
           </div>
-          ${!isCurrent && dev.hash ? `
+          ${!isCurrent && dev.hash && dev.hash !== '0' ? `
             <div style="margin-top: 10px; display: flex; justify-content: flex-end;">
               <button class="btn btn-danger btn-sm" onclick="terminateDeviceSession(${accountId}, '${escapeHtml(dev.hash)}', '${escapeHtml(deviceTitle)}')">
                 🚫 Putuskan Sesi Ini
@@ -1324,15 +1334,16 @@ async function terminateDeviceSession(accountId, authHash, deviceName) {
       headers: getAuthHeaders()
     });
     const data = await res.json();
-    if (res.ok) {
+    if (res.ok && data.status !== 'error') {
       showToast(data.message || 'Sesi perangkat berhasil diputuskan!', 'success');
       loadAccountDevices(accountId);
     } else {
-      showToast(data.detail || 'Gagal memutuskan sesi perangkat', 'error');
+      showToast(data.detail || data.message || 'Gagal memutuskan sesi perangkat', 'error');
     }
   } catch (e) {
     showToast('Koneksi gagal saat memutuskan sesi', 'error');
   }
 }
+
 
 
