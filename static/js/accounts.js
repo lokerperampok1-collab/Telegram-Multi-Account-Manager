@@ -557,23 +557,38 @@ let cachedExportAccounts = [];
 let selectedExportAccountIds = new Set();
 
 function updateExportFormatUI() {
+  const zipRadio = document.getElementById('export-format-zip');
   const txtRadio = document.getElementById('export-format-txt');
   const jsonRadio = document.getElementById('export-format-json');
+  const zipLabel = document.getElementById('export-fmt-zip-label');
   const txtLabel = document.getElementById('export-fmt-txt-label');
   const jsonLabel = document.getElementById('export-fmt-json-label');
   const copyBtn = document.getElementById('export-copy-clipboard-btn');
 
+  const isZip = zipRadio && zipRadio.checked;
   const isTxt = txtRadio && txtRadio.checked;
+  const isJson = jsonRadio && jsonRadio.checked;
+
+  if (zipLabel) {
+    zipLabel.style.border = isZip ? '2px solid var(--accent-cyan)' : '1px solid var(--border-color)';
+    zipLabel.style.background = isZip ? 'rgba(0, 212, 255, 0.12)' : 'rgba(255, 255, 255, 0.03)';
+  }
   if (txtLabel) {
     txtLabel.style.border = isTxt ? '2px solid var(--accent-cyan)' : '1px solid var(--border-color)';
     txtLabel.style.background = isTxt ? 'rgba(0, 212, 255, 0.12)' : 'rgba(255, 255, 255, 0.03)';
   }
   if (jsonLabel) {
-    jsonLabel.style.border = !isTxt ? '2px solid var(--accent-cyan)' : '1px solid var(--border-color)';
-    jsonLabel.style.background = !isTxt ? 'rgba(0, 212, 255, 0.12)' : 'rgba(255, 255, 255, 0.03)';
+    jsonLabel.style.border = isJson ? '2px solid var(--accent-cyan)' : '1px solid var(--border-color)';
+    jsonLabel.style.background = isJson ? 'rgba(0, 212, 255, 0.12)' : 'rgba(255, 255, 255, 0.03)';
   }
+
   if (copyBtn) {
-    copyBtn.innerHTML = isTxt ? '<span>📋 Salin String ke Clipboard</span>' : '<span>📋 Salin JSON ke Clipboard</span>';
+    if (isZip) {
+      copyBtn.style.display = 'none';
+    } else {
+      copyBtn.style.display = 'inline-flex';
+      copyBtn.innerHTML = isTxt ? '<span>📋 Salin String ke Clipboard</span>' : '<span>📋 Salin JSON ke Clipboard</span>';
+    }
   }
 }
 
@@ -626,8 +641,9 @@ window.toggleExportAccountSelection = function(accId, checked) {
   updateExportCountBadge();
 };
 
-window.openExportModal = async function(defaultFormat = 'txt') {
+window.openExportModal = async function(defaultFormat = 'zip') {
   const modal = document.getElementById('export-modal');
+  const zipRadio = document.getElementById('export-format-zip');
   const txtRadio = document.getElementById('export-format-txt');
   const jsonRadio = document.getElementById('export-format-json');
   const searchInput = document.getElementById('export-search-accounts');
@@ -635,8 +651,10 @@ window.openExportModal = async function(defaultFormat = 'txt') {
 
   if (defaultFormat === 'json' && jsonRadio) {
     jsonRadio.checked = true;
-  } else if (txtRadio) {
+  } else if (defaultFormat === 'txt' && txtRadio) {
     txtRadio.checked = true;
+  } else if (zipRadio) {
+    zipRadio.checked = true;
   }
   updateExportFormatUI();
 
@@ -683,8 +701,14 @@ async function executeExportAction(actionType = 'download') {
     return;
   }
 
+  const zipRadio = document.getElementById('export-format-zip');
   const txtRadio = document.getElementById('export-format-txt');
-  const format = (txtRadio && txtRadio.checked) ? 'txt' : 'json';
+  const jsonRadio = document.getElementById('export-format-json');
+  let format = 'zip';
+  if (txtRadio && txtRadio.checked) format = 'txt';
+  else if (jsonRadio && jsonRadio.checked) format = 'json';
+  else format = 'zip';
+
   const accountIds = Array.from(selectedExportAccountIds);
 
   const downloadBtn = document.getElementById('export-download-submit-btn');
@@ -693,6 +717,10 @@ async function executeExportAction(actionType = 'download') {
   if (copyBtn) copyBtn.disabled = true;
 
   try {
+    if (actionType === 'copy' && format === 'zip') {
+      showToast('Format ZIP adalah file biner (arsip), gunakan tombol Download File Export', 'warning');
+      return;
+    }
     const res = await fetch(`/api/accounts/export/${format}`, {
       method: 'POST',
       headers: getAuthHeaders(),
@@ -781,6 +809,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Export dropdown handlers
   const exportMenuBtn = document.getElementById('export-menu-btn');
   const exportDropdown = document.getElementById('export-dropdown-menu');
+  const exportZipBtn = document.getElementById('export-zip-btn');
   const exportJsonBtn = document.getElementById('export-json-btn');
   const exportTxtBtn = document.getElementById('export-txt-btn');
 
@@ -792,6 +821,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.addEventListener('click', () => {
       exportDropdown.style.display = 'none';
+    });
+  }
+
+  if (exportZipBtn) {
+    exportZipBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      triggerExport('zip');
     });
   }
 
@@ -812,6 +848,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Export Modal controls
   const exportModal = document.getElementById('export-modal');
   const exportModalClose = document.getElementById('export-modal-close');
+  const exportFormatZip = document.getElementById('export-format-zip');
   const exportFormatTxt = document.getElementById('export-format-txt');
   const exportFormatJson = document.getElementById('export-format-json');
   const exportSelectAll = document.getElementById('export-select-all');
@@ -828,6 +865,9 @@ document.addEventListener('DOMContentLoaded', () => {
     exportModal.addEventListener('click', (e) => {
       if (e.target === exportModal) window.closeExportModal();
     });
+  }
+  if (exportFormatZip) {
+    exportFormatZip.addEventListener('change', updateExportFormatUI);
   }
   if (exportFormatTxt) {
     exportFormatTxt.addEventListener('change', updateExportFormatUI);

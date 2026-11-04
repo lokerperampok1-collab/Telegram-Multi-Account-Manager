@@ -19,6 +19,40 @@ def sqlite_to_string_session(dc_id: int, server_address: str, port: int, auth_ke
     data = struct.pack(f'>B{len(ip)}sH256s', dc_id, ip, port, auth_key_bytes)
     return '1' + base64.urlsafe_b64encode(data).decode('ascii')
 
+def string_session_to_sqlite_bytes(session_str: str) -> bytes | None:
+    """Converts a standard Telethon StringSession into raw bytes of an SQLite .session file."""
+    if not session_str or not session_str.startswith('1'):
+        return None
+    try:
+        s_loaded = StringSession(session_str)
+        if not s_loaded.auth_key:
+            return None
+
+        with tempfile.NamedTemporaryFile(suffix='.session', delete=False) as f:
+            tmp_path = f.name
+
+        try:
+            base_name = tmp_path[:-8] if tmp_path.endswith('.session') else tmp_path
+            sq = SQLiteSession(base_name)
+            sq._dc_id = s_loaded._dc_id
+            sq._server_address = s_loaded._server_address
+            sq._port = s_loaded._port
+            sq._auth_key = s_loaded._auth_key
+            sq._update_session_table()
+            sq.save()
+            sq.close()
+            with open(tmp_path, 'rb') as f:
+                return f.read()
+        finally:
+            if os.path.exists(tmp_path):
+                try:
+                    os.remove(tmp_path)
+                except Exception:
+                    pass
+    except Exception as e:
+        logger.warning(f"Error converting StringSession to SQLite: {e}")
+        return None
+
 def extract_string_from_session_bytes(session_bytes: bytes) -> str | None:
     """Extracts Telethon StringSession from raw .session SQLite file bytes."""
     with tempfile.NamedTemporaryFile(suffix='.session', delete=False) as tmp:

@@ -270,6 +270,28 @@ async def export_txt_post(req: Optional[ExportSessionsRequest] = None, current_u
         headers={"Content-Disposition": "attachment; filename=telegram_sessions_backup.txt"}
     )
 
+@router.get("/export/zip")
+async def export_zip(ids: Optional[str] = None, current_user: dict = Depends(get_current_user)):
+    """Exports all or selected accounts as a downloadable ZIP containing .session and .json files."""
+    parsed_ids = _parse_ids_query(ids)
+    zip_bytes = await client_manager.export_sessions_zip(current_user["id"], account_ids=parsed_ids)
+    return Response(
+        content=zip_bytes,
+        media_type="application/zip",
+        headers={"Content-Disposition": "attachment; filename=telegram_sessions_archive.zip"}
+    )
+
+@router.post("/export/zip")
+async def export_zip_post(req: Optional[ExportSessionsRequest] = None, current_user: dict = Depends(get_current_user)):
+    """Exports all or selected accounts as a downloadable ZIP via POST."""
+    target_ids = req.account_ids if req else None
+    zip_bytes = await client_manager.export_sessions_zip(current_user["id"], account_ids=target_ids)
+    return Response(
+        content=zip_bytes,
+        media_type="application/zip",
+        headers={"Content-Disposition": "attachment; filename=telegram_sessions_archive.zip"}
+    )
+
 @router.post("/import-sessions")
 async def import_sessions(req: ImportSessionsRequest, current_user: dict = Depends(get_current_user)):
     """Imports one or more StringSessions directly into the dashboard."""

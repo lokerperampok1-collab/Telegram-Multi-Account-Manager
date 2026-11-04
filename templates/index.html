@@ -161,6 +161,14 @@
           </svg>
           <span class="nav-text">Export StringSession (TXT)</span>
         </button>
+        <button class="nav-item" id="sidebar-export-zip-btn">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+            <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
+            <line x1="12" y1="22.08" x2="12" y2="12"></line>
+          </svg>
+          <span class="nav-text">Export File Sesi (ZIP)</span>
+        </button>
       </nav>
 
       <!-- Sidebar User Footer -->
@@ -261,7 +269,8 @@
                 <button class="btn btn-secondary btn-sm" id="export-menu-btn" title="Backup & Export Session">
                   💾 Export ▾
                 </button>
-                <div id="export-dropdown-menu" style="display: none; position: absolute; right: 0; top: 100%; margin-top: 4px; background: var(--bg-surface-hover); border: 1px solid var(--border-color); border-radius: var(--radius-sm); box-shadow: var(--shadow-card); z-index: 100; min-width: 140px;">
+                <div id="export-dropdown-menu" style="display: none; position: absolute; right: 0; top: 100%; margin-top: 4px; background: var(--bg-surface-hover); border: 1px solid var(--border-color); border-radius: var(--radius-sm); box-shadow: var(--shadow-card); z-index: 100; min-width: 150px;">
+                  <a href="#" id="export-zip-btn" style="display: block; padding: 8px 14px; color: var(--text-primary); text-decoration: none; font-size: 0.8rem; border-bottom: 1px solid var(--border-color);">Arsip ZIP (.session)</a>
                   <a href="#" id="export-json-btn" style="display: block; padding: 8px 14px; color: var(--text-primary); text-decoration: none; font-size: 0.8rem; border-bottom: 1px solid var(--border-color);">Backup JSON</a>
                   <a href="#" id="export-txt-btn" style="display: block; padding: 8px 14px; color: var(--text-primary); text-decoration: none; font-size: 0.8rem;">String TXT</a>
                 </div>
@@ -1209,19 +1218,26 @@ Halo semuanya, selamat beraktivitas ya</textarea>
         <!-- Format Selector -->
         <div class="form-group" style="margin-bottom: 14px;">
           <label class="form-label">Format Export</label>
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
-            <label id="export-fmt-txt-label" style="display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: var(--radius-sm); border: 2px solid var(--accent-cyan); background: rgba(0, 212, 255, 0.12); cursor: pointer;">
-              <input type="radio" name="export-format-mode" value="txt" id="export-format-txt" checked>
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px;">
+            <label id="export-fmt-zip-label" style="display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: var(--radius-sm); border: 2px solid var(--accent-cyan); background: rgba(0, 212, 255, 0.12); cursor: pointer;">
+              <input type="radio" name="export-format-mode" value="zip" id="export-format-zip" checked>
               <div>
-                <div style="font-weight: 700; font-size: 0.88rem; color: var(--text-primary);">📄 StringSession (.TXT)</div>
+                <div style="font-weight: 700; font-size: 0.88rem; color: var(--text-primary);">🗜️ Arsip (.ZIP)</div>
+                <div style="font-size: 0.72rem; color: var(--text-muted);">File .session & .json per akun</div>
+              </div>
+            </label>
+            <label id="export-fmt-txt-label" style="display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: var(--radius-sm); border: 1px solid var(--border-color); background: rgba(255, 255, 255, 0.03); cursor: pointer;">
+              <input type="radio" name="export-format-mode" value="txt" id="export-format-txt">
+              <div>
+                <div style="font-weight: 700; font-size: 0.88rem; color: var(--text-primary);">📄 String (.TXT)</div>
                 <div style="font-size: 0.72rem; color: var(--text-muted);">1 StringSession per baris</div>
               </div>
             </label>
             <label id="export-fmt-json-label" style="display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: var(--radius-sm); border: 1px solid var(--border-color); background: rgba(255, 255, 255, 0.03); cursor: pointer;">
               <input type="radio" name="export-format-mode" value="json" id="export-format-json">
               <div>
-                <div style="font-weight: 700; font-size: 0.88rem; color: var(--text-primary);">📦 Backup Lengkap (.JSON)</div>
-                <div style="font-size: 0.72rem; color: var(--text-muted);">Sesi + Info Akun + Sandi 2FA</div>
+                <div style="font-weight: 700; font-size: 0.88rem; color: var(--text-primary);">📦 Backup (.JSON)</div>
+                <div style="font-size: 0.72rem; color: var(--text-muted);">Sesi + Info + Sandi 2FA</div>
               </div>
             </label>
           </div>
@@ -1263,8 +1279,8 @@ Halo semuanya, selamat beraktivitas ya</textarea>
   <div id="toast-container"></div>
 
   <!-- Scripts -->
-  <script src="/static/js/app.js?v=20261104a"></script>
-  <script src="/static/js/accounts.js?v=20261104a"></script>
-  <script src="/static/js/telegram-login.js?v=20261104a"></script>
+  <script src="/static/js/app.js?v=20261104b"></script>
+  <script src="/static/js/accounts.js?v=20261104b"></script>
+  <script src="/static/js/telegram-login.js?v=20261104b"></script>
 </body>
 </html>
