@@ -169,6 +169,13 @@
           </svg>
           <span class="nav-text">Export File Sesi (ZIP)</span>
         </button>
+        <button class="nav-item" id="sidebar-export-nicegram-btn">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="5" y="2" width="14" height="20" rx="2" ry="2"></rect>
+            <line x1="12" y1="18" x2="12.01" y2="18"></line>
+          </svg>
+          <span class="nav-text">Export Nicegram (ZIP)</span>
+        </button>
       </nav>
 
       <!-- Sidebar User Footer -->
@@ -269,10 +276,11 @@
                 <button class="btn btn-secondary btn-sm" id="export-menu-btn" title="Backup & Export Session">
                   💾 Export ▾
                 </button>
-                <div id="export-dropdown-menu" style="display: none; position: absolute; right: 0; top: 100%; margin-top: 4px; background: var(--bg-surface-hover); border: 1px solid var(--border-color); border-radius: var(--radius-sm); box-shadow: var(--shadow-card); z-index: 100; min-width: 150px;">
-                  <a href="#" id="export-zip-btn" style="display: block; padding: 8px 14px; color: var(--text-primary); text-decoration: none; font-size: 0.8rem; border-bottom: 1px solid var(--border-color);">Arsip ZIP (.session)</a>
-                  <a href="#" id="export-json-btn" style="display: block; padding: 8px 14px; color: var(--text-primary); text-decoration: none; font-size: 0.8rem; border-bottom: 1px solid var(--border-color);">Backup JSON</a>
-                  <a href="#" id="export-txt-btn" style="display: block; padding: 8px 14px; color: var(--text-primary); text-decoration: none; font-size: 0.8rem;">String TXT</a>
+                <div id="export-dropdown-menu" style="display: none; position: absolute; right: 0; top: 100%; margin-top: 4px; background: var(--bg-surface-hover); border: 1px solid var(--border-color); border-radius: var(--radius-sm); box-shadow: var(--shadow-card); z-index: 100; min-width: 165px;">
+                  <a href="#" id="export-nicegram-btn" style="display: block; padding: 8px 14px; color: var(--accent-cyan); font-weight: 600; text-decoration: none; font-size: 0.8rem; border-bottom: 1px solid var(--border-color);">📱 Nicegram (.ZIP)</a>
+                  <a href="#" id="export-zip-btn" style="display: block; padding: 8px 14px; color: var(--text-primary); text-decoration: none; font-size: 0.8rem; border-bottom: 1px solid var(--border-color);">🗜️ Arsip ZIP (.session)</a>
+                  <a href="#" id="export-json-btn" style="display: block; padding: 8px 14px; color: var(--text-primary); text-decoration: none; font-size: 0.8rem; border-bottom: 1px solid var(--border-color);">📦 Backup JSON</a>
+                  <a href="#" id="export-txt-btn" style="display: block; padding: 8px 14px; color: var(--text-primary); text-decoration: none; font-size: 0.8rem;">📄 String TXT</a>
                 </div>
               </div>
             </div>
@@ -1219,8 +1227,15 @@ Halo semuanya, selamat beraktivitas ya</textarea>
         <div class="form-group" style="margin-bottom: 14px;">
           <label class="form-label">Format Export</label>
           <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px;">
-            <label id="export-fmt-zip-label" style="display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: var(--radius-sm); border: 2px solid var(--accent-cyan); background: rgba(0, 212, 255, 0.12); cursor: pointer;">
-              <input type="radio" name="export-format-mode" value="zip" id="export-format-zip" checked>
+            <label id="export-fmt-nicegram-label" style="display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: var(--radius-sm); border: 2px solid var(--accent-cyan); background: rgba(0, 212, 255, 0.12); cursor: pointer;">
+              <input type="radio" name="export-format-mode" value="nicegram" id="export-format-nicegram" checked>
+              <div>
+                <div style="font-weight: 700; font-size: 0.88rem; color: var(--text-primary);">📱 Nicegram (.ZIP)</div>
+                <div style="font-size: 0.72rem; color: var(--text-muted);">Format Langsung Import HP</div>
+              </div>
+            </label>
+            <label id="export-fmt-zip-label" style="display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: var(--radius-sm); border: 1px solid var(--border-color); background: rgba(255, 255, 255, 0.03); cursor: pointer;">
+              <input type="radio" name="export-format-mode" value="zip" id="export-format-zip">
               <div>
                 <div style="font-weight: 700; font-size: 0.88rem; color: var(--text-primary);">🗜️ Arsip (.ZIP)</div>
                 <div style="font-size: 0.72rem; color: var(--text-muted);">File .session & .json per akun</div>
@@ -1279,8 +1294,8 @@ Halo semuanya, selamat beraktivitas ya</textarea>
   <div id="toast-container"></div>
 
   <!-- Scripts -->
-  <script src="/static/js/app.js?v=20261104b"></script>
-  <script src="/static/js/accounts.js?v=20261104b"></script>
-  <script src="/static/js/telegram-login.js?v=20261104b"></script>
+  <script src="/static/js/app.js?v=20261104c"></script>
+  <script src="/static/js/accounts.js?v=20261104c"></script>
+  <script src="/static/js/telegram-login.js?v=20261104c"></script>
 </body>
 </html>

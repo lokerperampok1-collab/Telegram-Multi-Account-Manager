@@ -557,18 +557,25 @@ let cachedExportAccounts = [];
 let selectedExportAccountIds = new Set();
 
 function updateExportFormatUI() {
+  const nicegramRadio = document.getElementById('export-format-nicegram');
   const zipRadio = document.getElementById('export-format-zip');
   const txtRadio = document.getElementById('export-format-txt');
   const jsonRadio = document.getElementById('export-format-json');
+  const nicegramLabel = document.getElementById('export-fmt-nicegram-label');
   const zipLabel = document.getElementById('export-fmt-zip-label');
   const txtLabel = document.getElementById('export-fmt-txt-label');
   const jsonLabel = document.getElementById('export-fmt-json-label');
   const copyBtn = document.getElementById('export-copy-clipboard-btn');
 
+  const isNicegram = nicegramRadio && nicegramRadio.checked;
   const isZip = zipRadio && zipRadio.checked;
   const isTxt = txtRadio && txtRadio.checked;
   const isJson = jsonRadio && jsonRadio.checked;
 
+  if (nicegramLabel) {
+    nicegramLabel.style.border = isNicegram ? '2px solid var(--accent-cyan)' : '1px solid var(--border-color)';
+    nicegramLabel.style.background = isNicegram ? 'rgba(0, 212, 255, 0.12)' : 'rgba(255, 255, 255, 0.03)';
+  }
   if (zipLabel) {
     zipLabel.style.border = isZip ? '2px solid var(--accent-cyan)' : '1px solid var(--border-color)';
     zipLabel.style.background = isZip ? 'rgba(0, 212, 255, 0.12)' : 'rgba(255, 255, 255, 0.03)';
@@ -583,7 +590,7 @@ function updateExportFormatUI() {
   }
 
   if (copyBtn) {
-    if (isZip) {
+    if (isZip || isNicegram) {
       copyBtn.style.display = 'none';
     } else {
       copyBtn.style.display = 'inline-flex';
@@ -643,18 +650,23 @@ window.toggleExportAccountSelection = function(accId, checked) {
 
 window.openExportModal = async function(defaultFormat = 'zip') {
   const modal = document.getElementById('export-modal');
+  const nicegramRadio = document.getElementById('export-format-nicegram');
   const zipRadio = document.getElementById('export-format-zip');
   const txtRadio = document.getElementById('export-format-txt');
   const jsonRadio = document.getElementById('export-format-json');
   const searchInput = document.getElementById('export-search-accounts');
   const container = document.getElementById('export-account-items');
 
-  if (defaultFormat === 'json' && jsonRadio) {
+  if (defaultFormat === 'nicegram' && nicegramRadio) {
+    nicegramRadio.checked = true;
+  } else if (defaultFormat === 'json' && jsonRadio) {
     jsonRadio.checked = true;
   } else if (defaultFormat === 'txt' && txtRadio) {
     txtRadio.checked = true;
-  } else if (zipRadio) {
+  } else if (defaultFormat === 'zip' && zipRadio) {
     zipRadio.checked = true;
+  } else if (nicegramRadio) {
+    nicegramRadio.checked = true;
   }
   updateExportFormatUI();
 
@@ -701,13 +713,15 @@ async function executeExportAction(actionType = 'download') {
     return;
   }
 
+  const nicegramRadio = document.getElementById('export-format-nicegram');
   const zipRadio = document.getElementById('export-format-zip');
   const txtRadio = document.getElementById('export-format-txt');
   const jsonRadio = document.getElementById('export-format-json');
-  let format = 'zip';
-  if (txtRadio && txtRadio.checked) format = 'txt';
+  let format = 'nicegram';
+  if (nicegramRadio && nicegramRadio.checked) format = 'nicegram';
+  else if (zipRadio && zipRadio.checked) format = 'zip';
+  else if (txtRadio && txtRadio.checked) format = 'txt';
   else if (jsonRadio && jsonRadio.checked) format = 'json';
-  else format = 'zip';
 
   const accountIds = Array.from(selectedExportAccountIds);
 
@@ -717,8 +731,8 @@ async function executeExportAction(actionType = 'download') {
   if (copyBtn) copyBtn.disabled = true;
 
   try {
-    if (actionType === 'copy' && format === 'zip') {
-      showToast('Format ZIP adalah file biner (arsip), gunakan tombol Download File Export', 'warning');
+    if (actionType === 'copy' && (format === 'zip' || format === 'nicegram')) {
+      showToast('Format arsip ZIP adalah file biner, gunakan tombol Download File Export', 'warning');
       return;
     }
     const res = await fetch(`/api/accounts/export/${format}`, {
@@ -745,12 +759,17 @@ async function executeExportAction(actionType = 'download') {
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `telegram_sessions_${accountIds.length}_akun.${format}`;
+      if (format === 'nicegram') {
+        a.download = `Nicegram Exported Accounts (${accountIds.length} akun).zip`;
+      } else {
+        a.download = `telegram_sessions_${accountIds.length}_akun.${format}`;
+      }
       document.body.appendChild(a);
       a.click();
       a.remove();
       window.URL.revokeObjectURL(url);
-      showToast(`File export ${accountIds.length} akun (.${format}) berhasil diunduh!`, 'success');
+      const formatLabel = format === 'nicegram' ? 'Nicegram ZIP' : `.${format}`;
+      showToast(`File export ${accountIds.length} akun (${formatLabel}) berhasil diunduh!`, 'success');
       window.closeExportModal();
     }
   } catch (e) {
@@ -809,6 +828,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Export dropdown handlers
   const exportMenuBtn = document.getElementById('export-menu-btn');
   const exportDropdown = document.getElementById('export-dropdown-menu');
+  const exportNicegramBtn = document.getElementById('export-nicegram-btn');
   const exportZipBtn = document.getElementById('export-zip-btn');
   const exportJsonBtn = document.getElementById('export-json-btn');
   const exportTxtBtn = document.getElementById('export-txt-btn');
@@ -821,6 +841,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.addEventListener('click', () => {
       exportDropdown.style.display = 'none';
+    });
+  }
+
+  if (exportNicegramBtn) {
+    exportNicegramBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      triggerExport('nicegram');
     });
   }
 
@@ -848,6 +875,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Export Modal controls
   const exportModal = document.getElementById('export-modal');
   const exportModalClose = document.getElementById('export-modal-close');
+  const exportFormatNicegram = document.getElementById('export-format-nicegram');
   const exportFormatZip = document.getElementById('export-format-zip');
   const exportFormatTxt = document.getElementById('export-format-txt');
   const exportFormatJson = document.getElementById('export-format-json');
@@ -865,6 +893,9 @@ document.addEventListener('DOMContentLoaded', () => {
     exportModal.addEventListener('click', (e) => {
       if (e.target === exportModal) window.closeExportModal();
     });
+  }
+  if (exportFormatNicegram) {
+    exportFormatNicegram.addEventListener('change', updateExportFormatUI);
   }
   if (exportFormatZip) {
     exportFormatZip.addEventListener('change', updateExportFormatUI);

@@ -1739,6 +1739,12 @@ class ClientManager:
         zip_buf.seek(0)
         return zip_buf.getvalue()
 
+    async def export_sessions_nicegram_zip(self, user_id: int, account_ids: Optional[list[int]] = None) -> bytes:
+        """Creates a Nicegram-compatible ZIP archive containing account0, account1, etc. with tgnet.dat and session.json."""
+        data = await self.export_sessions(user_id, account_ids=account_ids)
+        from services.nicegram_converter import export_nicegram_zip
+        return export_nicegram_zip(data)
+
     async def import_session_string(self, user_id: int, session_str: str, twofa_password: Optional[str] = None) -> dict:
         """Validates and imports a single StringSession into database."""
         s = session_str.strip()

@@ -175,6 +175,15 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     }
 
+    const sideExportNicegramBtn = document.getElementById('sidebar-export-nicegram-btn');
+    if (sideExportNicegramBtn) {
+      sideExportNicegramBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        closeSidebar();
+        if (window.triggerExport) window.triggerExport('nicegram');
+      });
+    }
+
     const gotoChange2faBtn = document.getElementById('goto-change-2fa-btn');
     if (gotoChange2faBtn) {
       gotoChange2faBtn.addEventListener('click', (e) => {

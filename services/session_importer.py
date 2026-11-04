@@ -115,13 +115,55 @@ def extract_strings_from_text(content_str: str) -> List[str]:
     return list(dict.fromkeys(results))
 
 def extract_sessions_from_zip(zip_bytes: bytes) -> List[Tuple[str, str]]:
-    """Extracts all .session, .txt, and .json files found inside a ZIP archive."""
+    """Extracts all .session, .txt, .json, and Nicegram tgnet.dat files found inside a ZIP archive."""
     extracted = []
     try:
         with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
-            for name in zf.namelist():
+            namelist = zf.namelist()
+            # First, check for Nicegram tgnet.dat files
+            nicegram_folders = set()
+            for name in namelist:
                 if name.endswith('/') or '__MACOSX' in name or name.startswith('.'):
                     continue
+                lower_name = name.lower()
+                if lower_name.endswith('tgnet.dat'):
+                    try:
+                        from services.nicegram_converter import extract_session_from_nicegram_tgnet
+                        file_bytes = zf.read(name)
+                        s = extract_session_from_nicegram_tgnet(file_bytes)
+                        if s:
+                            # Try to find associated session.json in the same folder
+                            parent_dir = os.path.dirname(name)
+                            nicegram_folders.add(parent_dir)
+                            label = os.path.basename(parent_dir) or "Nicegram Account"
+                            json_path = os.path.join(parent_dir, "session.json").replace("\\", "/")
+                            if json_path in namelist:
+                                try:
+                                    j_bytes = zf.read(json_path)
+                                    j_data = json.loads(j_bytes.decode('utf-8', errors='ignore'))
+                                    acc_name = j_data.get("name") or ""
+                                    acc_id = j_data.get("id") or ""
+                                    if acc_name and acc_id:
+                                        label = f"{label} ({acc_name} #{acc_id})"
+                                    elif acc_name:
+                                        label = f"{label} ({acc_name})"
+                                    elif acc_id:
+                                        label = f"{label} (#{acc_id})"
+                                except Exception:
+                                    pass
+                            extracted.append((label, s))
+                    except Exception as e:
+                        logger.warning(f"Error reading Nicegram tgnet from zip ({name}): {e}")
+
+            # Second, handle standard .session, .txt, and .json
+            for name in namelist:
+                if name.endswith('/') or '__MACOSX' in name or name.startswith('.'):
+                    continue
+                parent_dir = os.path.dirname(name)
+                # If this file is part of an already processed Nicegram folder, skip it
+                if parent_dir in nicegram_folders:
+                    continue
+
                 file_bytes = zf.read(name)
                 lower_name = name.lower()
                 clean_name = os.path.basename(name) or name
@@ -147,11 +189,21 @@ def extract_sessions_from_file(filename: str, file_bytes: bytes) -> List[Tuple[s
     lower = filename.lower()
     clean_name = os.path.basename(filename) or filename
 
-    # 1. ZIP Archive containing sessions
+    # 1. ZIP Archive containing sessions (Telethon or Nicegram)
     if lower.endswith('.zip'):
         return extract_sessions_from_zip(file_bytes)
 
-    # 2. Direct Telethon .session SQLite file
+    # 2. Nicegram binary session (tgnet.dat)
+    if lower.endswith('tgnet.dat') or lower.endswith('.dat'):
+        try:
+            from services.nicegram_converter import extract_session_from_nicegram_tgnet
+            s = extract_session_from_nicegram_tgnet(file_bytes)
+            if s:
+                return [(clean_name, s)]
+        except Exception:
+            pass
+
+    # 3. Direct Telethon .session SQLite file
     if lower.endswith('.session'):
         s = extract_string_from_session_bytes(file_bytes)
         if s:

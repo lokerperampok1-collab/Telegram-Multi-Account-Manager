@@ -292,6 +292,28 @@ async def export_zip_post(req: Optional[ExportSessionsRequest] = None, current_u
         headers={"Content-Disposition": "attachment; filename=telegram_sessions_archive.zip"}
     )
 
+@router.get("/export/nicegram")
+async def export_nicegram(ids: Optional[str] = None, current_user: dict = Depends(get_current_user)):
+    """Exports all or selected accounts as a Nicegram-compatible ZIP archive."""
+    parsed_ids = _parse_ids_query(ids)
+    zip_bytes = await client_manager.export_sessions_nicegram_zip(current_user["id"], account_ids=parsed_ids)
+    return Response(
+        content=zip_bytes,
+        media_type="application/zip",
+        headers={"Content-Disposition": "attachment; filename=nicegram_exported_accounts.zip"}
+    )
+
+@router.post("/export/nicegram")
+async def export_nicegram_post(req: Optional[ExportSessionsRequest] = None, current_user: dict = Depends(get_current_user)):
+    """Exports all or selected accounts as a Nicegram-compatible ZIP archive via POST."""
+    target_ids = req.account_ids if req else None
+    zip_bytes = await client_manager.export_sessions_nicegram_zip(current_user["id"], account_ids=target_ids)
+    return Response(
+        content=zip_bytes,
+        media_type="application/zip",
+        headers={"Content-Disposition": "attachment; filename=nicegram_exported_accounts.zip"}
+    )
+
 @router.post("/import-sessions")
 async def import_sessions(req: ImportSessionsRequest, current_user: dict = Depends(get_current_user)):
     """Imports one or more StringSessions directly into the dashboard."""
