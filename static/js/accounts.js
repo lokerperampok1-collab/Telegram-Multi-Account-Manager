@@ -318,6 +318,53 @@ async function checkAccountHealth(accountId) {
   }
 }
 
+async function connectAllOfflineAccounts() {
+  const btn = document.getElementById('connect-all-offline-btn');
+  const sideBtn = document.getElementById('sidebar-connect-offline-btn');
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<div class="spinner"></div> Menghubungkan...';
+  }
+  if (sideBtn) sideBtn.disabled = true;
+
+  if (window.OperationManager) {
+    window.OperationManager.setRunning('Menghubungkan Semua Akun Offline', 'accounts-cancel-btn');
+  }
+  showToast('Menghubungkan semua akun yang offline...', 'info');
+
+  try {
+    const res = await fetch('/api/accounts/connect-offline', {
+      method: 'POST',
+      headers: getAuthHeaders()
+    });
+    const data = await res.json();
+
+    if (res.ok && data.status === 'success') {
+      if (data.total_offline === 0) {
+        showToast('Semua akun sudah online / tidak ada akun offline.', 'info');
+      } else {
+        const msg = `Selesai: ${data.connected_count} dari ${data.total_offline} akun berhasil dihubungkan!` +
+          (data.failed_count > 0 ? ` (${data.failed_count} akun sesi mati / revoked)` : '');
+        showToast(msg, data.connected_count > 0 ? 'success' : 'warning');
+      }
+      await loadAccounts();
+    } else {
+      showToast(data.message || data.detail || 'Gagal menghubungkan akun offline', 'error');
+    }
+  } catch (e) {
+    showToast('Koneksi server gagal', 'error');
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = '⚡ Hubungkan Offline';
+    }
+    if (sideBtn) sideBtn.disabled = false;
+    if (window.OperationManager) {
+      window.OperationManager.setFinished('accounts-cancel-btn');
+    }
+  }
+}
+
 async function checkAllAccountsHealth() {
   const btn = document.getElementById('check-all-health-btn');
   if (btn) {
@@ -813,6 +860,11 @@ document.addEventListener('DOMContentLoaded', () => {
         refreshBtn.innerHTML = originalHtml;
       }
     });
+  }
+
+  const connectAllOfflineBtn = document.getElementById('connect-all-offline-btn');
+  if (connectAllOfflineBtn) {
+    connectAllOfflineBtn.addEventListener('click', connectAllOfflineAccounts);
   }
 
   const checkAllBtn = document.getElementById('check-all-health-btn');
@@ -1559,6 +1611,7 @@ function fallbackCopyPhone(text, onSuccess) {
 }
 
 // Global exports for sidebar and inline event handlers
+window.connectAllOfflineAccounts = connectAllOfflineAccounts;
 window.checkAccount2FA = checkAccount2FA;
 window.checkAllAccounts2FA = checkAllAccounts2FA;
 window.checkAccountHealth = checkAccountHealth;

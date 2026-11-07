@@ -440,6 +440,120 @@ class ClientManager:
         except Exception as e:
             return {"status": "error", "message": str(e)}
 
+    async def connect_all_offline_accounts(self, user_id: int) -> dict:
+        """
+        Finds all accounts that are marked offline or currently not connected in memory,
+        and reconnects them in parallel (concurrency limited to 10).
+        """
+        op_id = f"connect_offline_{uuid.uuid4().hex[:8]}"
+        self._start_operation(op_id, "Menghubungkan Akun Offline")
+        accounts = await TelegramAccountModel.list_by_user_with_sessions(user_id)
+        if not accounts:
+            self._finish_operation(op_id)
+            return {
+                "status": "success",
+                "total_offline": 0,
+                "connected_count": 0,
+                "failed_count": 0,
+                "connected_accounts": [],
+                "failed_accounts": [],
+                "message": "Tidak ada akun Telegram terdaftar"
+            }
+
+        # Filter accounts that are offline in DB or disconnected in memory
+        offline_targets = []
+        for acc in accounts:
+            acc_id = acc["id"]
+            client = self._active_clients.get(acc_id)
+            if not acc.get("is_active") or not client or not client.is_connected():
+                offline_targets.append(acc)
+
+        if not offline_targets:
+            self._finish_operation(op_id)
+            return {
+                "status": "success",
+                "total_offline": 0,
+                "connected_count": 0,
+                "failed_count": 0,
+                "connected_accounts": [],
+                "failed_accounts": [],
+                "message": "Semua akun sudah terhubung (online)"
+            }
+
+        connected_accounts = []
+        failed_accounts = []
+        sem = asyncio.Semaphore(10)
+        api_id, api_hash = self._get_credentials()
+
+        async def _connect_single(acc):
+            if self._is_cancelled(op_id):
+                return
+            acc_id = acc["id"]
+            phone = acc.get("phone_number") or ""
+            name = acc.get("display_name") or phone or f"Akun #{acc_id}"
+            async with sem:
+                if self._is_cancelled(op_id):
+                    return
+                try:
+                    session_str = encryption_service.decrypt(acc["session_string"])
+                    client = TelegramClient(StringSession(session_str), api_id, api_hash)
+                    await client.connect()
+
+                    if await client.is_user_authorized():
+                        me = await client.get_me()
+                        if me:
+                            self._active_clients[acc_id] = client
+                            await TelegramAccountModel.update_status(acc_id, True)
+                            new_name = f"{me.first_name or ''} {me.last_name or ''}".strip()
+                            if new_name and new_name != acc.get("display_name"):
+                                await TelegramAccountModel.update_display_name(acc_id, new_name)
+                            connected_accounts.append({
+                                "id": acc_id,
+                                "name": new_name or name,
+                                "phone": phone
+                            })
+                            return
+
+                    # Sesi mati / tidak authorized
+                    try:
+                        await client.disconnect()
+                    except Exception:
+                        pass
+                    await TelegramAccountModel.update_status(acc_id, False)
+                    failed_accounts.append({
+                        "id": acc_id,
+                        "name": name,
+                        "phone": phone,
+                        "error": "Sesi tidak terotorisasi / kedaluwarsa"
+                    })
+                except Exception as e:
+                    await TelegramAccountModel.update_status(acc_id, False)
+                    failed_accounts.append({
+                        "id": acc_id,
+                        "name": name,
+                        "phone": phone,
+                        "error": str(e)
+                    })
+
+        try:
+            await asyncio.gather(*(_connect_single(acc) for acc in offline_targets))
+        finally:
+            self._finish_operation(op_id)
+
+        msg = f"Selesai: {len(connected_accounts)} akun berhasil dihubungkan"
+        if failed_accounts:
+            msg += f", {len(failed_accounts)} akun gagal/sesi mati"
+
+        return {
+            "status": "success",
+            "total_offline": len(offline_targets),
+            "connected_count": len(connected_accounts),
+            "failed_count": len(failed_accounts),
+            "connected_accounts": connected_accounts,
+            "failed_accounts": failed_accounts,
+            "message": msg
+        }
+
     async def disconnect_account(self, account_id: int, user_id: int) -> dict:
         """Disconnects an active client without deleting from database."""
         if account_id in self._active_clients:

@@ -68,6 +68,12 @@ async def get_account_detail(account_id: int, current_user: dict = Depends(get_c
     account.pop("session_string", None)
     return {"status": "success", "account": account}
 
+@router.post("/connect-offline")
+async def connect_offline_accounts(current_user: dict = Depends(get_current_user)):
+    """Connects all offline/disconnected accounts in bulk."""
+    res = await client_manager.connect_all_offline_accounts(current_user["id"])
+    return res
+
 @router.post("/{account_id}/connect")
 async def connect_account(account_id: int, current_user: dict = Depends(get_current_user)):
     """Reconnects a saved Telegram account."""

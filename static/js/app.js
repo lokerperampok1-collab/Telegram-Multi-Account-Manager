@@ -130,6 +130,17 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // Sidebar Action Buttons
+    const sideConnectOfflineBtn = document.getElementById('sidebar-connect-offline-btn');
+    if (sideConnectOfflineBtn) {
+      sideConnectOfflineBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        closeSidebar();
+        const navAccounts = document.getElementById('nav-btn-accounts');
+        if (navAccounts) navAccounts.click();
+        if (window.connectAllOfflineAccounts) window.connectAllOfflineAccounts();
+      });
+    }
+
     const sideCheckHealthBtn = document.getElementById('sidebar-check-health-btn');
     if (sideCheckHealthBtn) {
       sideCheckHealthBtn.addEventListener('click', (e) => {

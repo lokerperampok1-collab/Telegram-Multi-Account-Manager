@@ -251,3 +251,4 @@ def extract_session_from_nicegram_tgnet(tgnet_bytes: bytes) -> Optional[str]:
     except Exception as e:
         logger.warning(f"Gagal mengekstrak sesi dari tgnet.dat Nicegram: {e}")
         return None
+
