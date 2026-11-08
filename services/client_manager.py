@@ -646,7 +646,7 @@ class ClientManager:
         Updates online/offline status and profile information (display_name, username).
         DOES NOT DELETE ACCOUNTS to prevent accidental data loss.
         """
-        accounts = await TelegramAccountModel.list_by_user(user_id)
+        accounts = await TelegramAccountModel.list_by_user_with_sessions(user_id)
         if not accounts:
             return {
                 "status": "success",
@@ -732,7 +732,7 @@ class ClientManager:
         Automatically DELETES all dead/revoked accounts from the database and memory.
         Returns detailed summary of purged accounts.
         """
-        accounts = await TelegramAccountModel.list_by_user(user_id)
+        accounts = await TelegramAccountModel.list_by_user_with_sessions(user_id)
         if not accounts:
             return {
                 "status": "success",
@@ -1416,7 +1416,7 @@ class ClientManager:
         """Runs health checks on all user accounts sequentially."""
         op_id = f"health_{uuid.uuid4().hex[:8]}"
         self._start_operation(op_id, "Cek Status @SpamBot Semua Akun")
-        accounts = await TelegramAccountModel.list_by_user(user_id)
+        accounts = await TelegramAccountModel.list_by_user_with_sessions(user_id)
         results = []
         try:
             for idx, acc in enumerate(accounts):
@@ -1911,7 +1911,7 @@ class ClientManager:
         """Runs 2FA check on all user accounts sequentially."""
         op_id = f"2fa_{uuid.uuid4().hex[:8]}"
         self._start_operation(op_id, "Cek 2FA Semua Akun")
-        accounts = await TelegramAccountModel.list_by_user(user_id)
+        accounts = await TelegramAccountModel.list_by_user_with_sessions(user_id)
         results = []
         try:
             for idx, acc in enumerate(accounts):
