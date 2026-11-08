@@ -702,7 +702,31 @@ function updateExportCountBadge() {
   }
 }
 
+let exportChecklistCtrl = null;
+
+function initExportChecklist() {
+  if (exportChecklistCtrl || !window.setupUniversalChecklist) return;
+  exportChecklistCtrl = window.setupUniversalChecklist({
+    prefix: 'export',
+    itemsContainerId: 'export-account-items',
+    checkboxClass: 'export-acc-checkbox',
+    cachedAccountsGetter: () => cachedExportAccounts,
+    selectedIdsSet: selectedExportAccountIds,
+    extraBadgesRenderer: (acc) => {
+      return acc.twofa_password 
+        ? `<span style="color: var(--accent-green); font-size: 0.72rem;">[2FA: ${escapeHtml(acc.twofa_password)}]</span>` 
+        : '';
+    },
+    onSelectionChanged: updateExportCountBadge
+  });
+}
+
 function renderExportChecklist(accounts) {
+  initExportChecklist();
+  if (exportChecklistCtrl) {
+    exportChecklistCtrl.render();
+    return;
+  }
   const container = document.getElementById('export-account-items');
   if (!container) return;
 
@@ -1022,46 +1046,7 @@ document.addEventListener('DOMContentLoaded', () => {
     exportFormatJson.addEventListener('change', updateExportFormatUI);
   }
 
-  function getFilteredExportAccounts() {
-    const q = (exportSearchInput ? exportSearchInput.value : '').toLowerCase().trim();
-    if (!q) return cachedExportAccounts;
-    return cachedExportAccounts.filter(acc => {
-      const name = (acc.display_name || '').toLowerCase();
-      const user = (acc.username || '').toLowerCase();
-      const phone = (acc.phone_number || '').toLowerCase();
-      const tgId = String(acc.telegram_id || '').toLowerCase();
-      return name.includes(q) || user.includes(q) || phone.includes(q) || tgId.includes(q);
-    });
-  }
-
-  if (exportSelectAll) {
-    exportSelectAll.addEventListener('click', () => {
-      const visible = getFilteredExportAccounts();
-      visible.forEach(acc => selectedExportAccountIds.add(acc.id));
-      renderExportChecklist(visible);
-    });
-  }
-  if (exportSelectNone) {
-    exportSelectNone.addEventListener('click', () => {
-      const visible = getFilteredExportAccounts();
-      visible.forEach(acc => selectedExportAccountIds.delete(acc.id));
-      renderExportChecklist(visible);
-    });
-  }
-  if (exportSelectOnline) {
-    exportSelectOnline.addEventListener('click', () => {
-      selectedExportAccountIds.clear();
-      cachedExportAccounts.forEach(acc => {
-        if (acc.is_active) selectedExportAccountIds.add(acc.id);
-      });
-      renderExportChecklist(getFilteredExportAccounts());
-    });
-  }
-  if (exportSearchInput) {
-    exportSearchInput.addEventListener('input', () => {
-      renderExportChecklist(getFilteredExportAccounts());
-    });
-  }
+  initExportChecklist();
   if (exportDownloadBtn) {
     exportDownloadBtn.addEventListener('click', () => executeExportAction('download'));
   }

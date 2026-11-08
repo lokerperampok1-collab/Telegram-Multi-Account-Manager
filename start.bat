@@ -34,3 +34,4 @@ echo Tekan Ctrl+C di jendela ini untuk mematikan server.
 echo.
 python main.py
 pause
+

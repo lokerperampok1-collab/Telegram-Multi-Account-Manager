@@ -411,83 +411,216 @@ async function promptBulkOtp(token, phone) {
   }
 }
 
+// ------------------- UNIVERSAL CHECKLIST FILTER HELPER -------------------
+
+window.filterChecklistByTgId = function(prefix, tgId) {
+  const idInput = document.getElementById(`${prefix}-id-filter`);
+  if (idInput) {
+    idInput.value = tgId;
+    idInput.dispatchEvent(new Event('input'));
+    idInput.focus();
+  }
+};
+
+window.setupUniversalChecklist = function({
+  prefix,
+  itemsContainerId,
+  checkboxClass,
+  cachedAccountsGetter,
+  selectedIdsSet = null,
+  extraBadgesRenderer = null,
+  onSelectionChanged = null
+}) {
+  const searchInput = document.getElementById(`${prefix}-search-accounts`);
+  const searchClearBtn = document.getElementById(`${prefix}-search-clear-btn`);
+  const idFilter = document.getElementById(`${prefix}-id-filter`);
+  const idClearBtn = document.getElementById(`${prefix}-id-clear-btn`);
+  const statusFilter = document.getElementById(`${prefix}-status-filter`);
+  const itemsContainer = document.getElementById(itemsContainerId);
+  const selectAllBtn = document.getElementById(`${prefix}-select-all`);
+  const selectNoneBtn = document.getElementById(`${prefix}-select-none`);
+  const selectOnlineBtn = document.getElementById(`${prefix}-select-online`);
+
+  function getFilteredAccounts() {
+    const rawAccounts = cachedAccountsGetter() || [];
+    const searchVal = (searchInput?.value || '').toLowerCase().trim();
+    const idVal = (idFilter?.value || '').trim();
+    const statusVal = statusFilter?.value || 'all';
+
+    if (searchClearBtn) searchClearBtn.style.display = searchVal ? 'block' : 'none';
+    if (idClearBtn) idClearBtn.style.display = idVal ? 'block' : 'none';
+
+    const prefixes = idVal ? idVal.split(',').map(s => s.trim().replace(/^#/, '')).filter(Boolean) : [];
+
+    return rawAccounts.filter(acc => {
+      const isOnline = !!acc.is_active;
+      if (statusVal === 'online' && !isOnline) return false;
+      if (statusVal === 'offline' && isOnline) return false;
+
+      // Strict prefix matching for TG ID (e.g. "9", "62, 78")
+      if (prefixes.length > 0) {
+        const tgIdStr = String(acc.telegram_id || '');
+        if (!prefixes.some(p => tgIdStr.startsWith(p))) return false;
+      }
+
+      // Name / Phone / Username match
+      if (searchVal) {
+        const matchName = (acc.display_name || '').toLowerCase().includes(searchVal);
+        const matchUsername = (acc.username || '').toLowerCase().includes(searchVal);
+        const matchPhone = (acc.phone_number || '').toLowerCase().includes(searchVal);
+        if (!matchName && !matchUsername && !matchPhone) return false;
+      }
+
+      return true;
+    });
+  }
+
+  function render() {
+    if (!itemsContainer) return;
+    const filtered = getFilteredAccounts();
+    if (filtered.length === 0) {
+      itemsContainer.innerHTML = '<div style="color: var(--text-muted); font-size: 0.8rem; padding: 12px; text-align: center;">Tidak ada akun yang sesuai dengan filter</div>';
+      if (onSelectionChanged) onSelectionChanged();
+      return;
+    }
+
+    itemsContainer.innerHTML = filtered.map(acc => {
+      const name = escapeHtml(acc.display_name || (acc.username ? '@' + acc.username : '') || acc.phone_number || ('Akun #' + acc.id));
+      const phone = escapeHtml(acc.phone_number || '-');
+      const isOnline = !!acc.is_active;
+      const isChecked = selectedIdsSet ? selectedIdsSet.has(acc.id) : false;
+
+      const tgIdBadge = acc.telegram_id 
+        ? `<span class="account-id-badge" onclick="event.preventDefault(); event.stopPropagation(); window.filterChecklistByTgId('${prefix}', '${acc.telegram_id}')" style="cursor: pointer; padding: 1px 6px; border-radius: 5px; font-size: 0.72rem; background: rgba(0, 212, 255, 0.08); border: 1px solid rgba(0, 212, 255, 0.25); color: var(--accent-cyan); font-family: 'JetBrains Mono', monospace;" title="Klik untuk filter awalan ID ${acc.telegram_id}">TG: ${acc.telegram_id} 🔍</span>`
+        : '';
+
+      const extraBadges = extraBadgesRenderer ? extraBadgesRenderer(acc) : '';
+      const statusBadge = isOnline 
+        ? '<span style="color: var(--accent-green); font-size: 0.74rem; font-weight: 600;">● Online</span>'
+        : '<span style="color: var(--text-muted); font-size: 0.74rem;">○ Offline</span>';
+
+      return `
+        <label style="display: flex; align-items: center; gap: 8px; font-size: 0.8rem; padding: 5px 8px; margin-bottom: 3px; border-radius: 6px; cursor: pointer; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.04); transition: background 0.15s;">
+          <input type="checkbox" class="${checkboxClass}" value="${acc.id}" data-id="${acc.id}" data-online="${isOnline ? '1' : '0'}" ${isChecked ? 'checked' : ''} style="cursor: pointer; accent-color: var(--accent-cyan);">
+          <span style="flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+            <strong>${name}</strong>
+            <span style="color: var(--text-secondary); font-family: 'JetBrains Mono', monospace; font-size: 0.74rem; margin-left: 4px;">(${phone})</span>
+            ${tgIdBadge ? '<span style="margin-left: 6px;">' + tgIdBadge + '</span>' : ''}
+            ${extraBadges ? '<span style="margin-left: 6px;">' + extraBadges + '</span>' : ''}
+          </span>
+          ${statusBadge}
+        </label>
+      `;
+    }).join('');
+
+    // Checkbox change handlers
+    if (selectedIdsSet) {
+      itemsContainer.querySelectorAll(`.${checkboxClass}`).forEach(cb => {
+        cb.addEventListener('change', (e) => {
+          const id = parseInt(e.target.value, 10);
+          if (e.target.checked) {
+            selectedIdsSet.add(id);
+          } else {
+            selectedIdsSet.delete(id);
+          }
+          if (onSelectionChanged) onSelectionChanged();
+        });
+      });
+    }
+
+    if (onSelectionChanged) onSelectionChanged();
+  }
+
+  // Bind inputs & clear buttons
+  if (searchInput) searchInput.addEventListener('input', render);
+  if (searchClearBtn) {
+    searchClearBtn.addEventListener('click', () => {
+      if (searchInput) searchInput.value = '';
+      render();
+    });
+  }
+  if (idFilter) idFilter.addEventListener('input', render);
+  if (idClearBtn) {
+    idClearBtn.addEventListener('click', () => {
+      if (idFilter) idFilter.value = '';
+      render();
+    });
+  }
+  if (statusFilter) statusFilter.addEventListener('change', render);
+
+  // Bind selection buttons
+  if (selectAllBtn) {
+    selectAllBtn.addEventListener('click', () => {
+      const visible = getFilteredAccounts();
+      if (selectedIdsSet) {
+        visible.forEach(acc => selectedIdsSet.add(acc.id));
+      }
+      itemsContainer?.querySelectorAll(`.${checkboxClass}`).forEach(cb => cb.checked = true);
+      if (onSelectionChanged) onSelectionChanged();
+    });
+  }
+
+  if (selectNoneBtn) {
+    selectNoneBtn.addEventListener('click', () => {
+      const visible = getFilteredAccounts();
+      if (selectedIdsSet) {
+        visible.forEach(acc => selectedIdsSet.delete(acc.id));
+      }
+      itemsContainer?.querySelectorAll(`.${checkboxClass}`).forEach(cb => cb.checked = false);
+      if (onSelectionChanged) onSelectionChanged();
+    });
+  }
+
+  if (selectOnlineBtn) {
+    selectOnlineBtn.addEventListener('click', () => {
+      const visible = getFilteredAccounts();
+      visible.forEach(acc => {
+        const isOnline = !!acc.is_active;
+        if (selectedIdsSet) {
+          if (isOnline) selectedIdsSet.add(acc.id);
+          else selectedIdsSet.delete(acc.id);
+        }
+      });
+      itemsContainer?.querySelectorAll(`.${checkboxClass}`).forEach(cb => {
+        cb.checked = cb.getAttribute('data-online') === '1';
+      });
+      if (onSelectionChanged) onSelectionChanged();
+    });
+  }
+
+  return { render, getFilteredAccounts };
+};
+
 // ------------------- JOIN GROUP FLOW -------------------
 
 document.addEventListener('DOMContentLoaded', () => {
   const joinRadioAll = document.getElementById('join-target-all');
   const joinRadioSelected = document.getElementById('join-target-selected');
   const checklistContainer = document.getElementById('join-account-checklist');
-  const joinItemsContainer = document.getElementById('join-account-items');
-  const joinSelectAll = document.getElementById('join-select-all');
-  const joinSelectNone = document.getElementById('join-select-none');
-  const joinSelectOnline = document.getElementById('join-select-online');
-  const joinSearchAccounts = document.getElementById('join-search-accounts');
   const startJoinBtn = document.getElementById('start-join-btn');
   const joinGroupLink = document.getElementById('join-group-link');
   const joinDelayInput = document.getElementById('join-delay');
   const joinResults = document.getElementById('join-results');
 
   let cachedJoinAccounts = [];
-
-  function renderJoinChecklist(accounts) {
-    if (!joinItemsContainer) return;
-    if (accounts.length === 0) {
-      joinItemsContainer.innerHTML = '<div style="color: var(--text-muted); font-size: 0.8rem; padding: 4px;">Tidak ada akun yang sesuai</div>';
-      return;
-    }
-
-    joinItemsContainer.innerHTML = accounts.map(acc => {
-      const name = acc.display_name || acc.username || acc.phone_number || `Akun #${acc.id}`;
-      const isOnline = acc.is_active;
-      return `
-        <label style="display: flex; align-items: center; gap: 8px; font-size: 0.8rem; margin-bottom: 4px; cursor: pointer;">
-          <input type="checkbox" class="join-acc-checkbox" value="${acc.id}" data-online="${isOnline ? '1' : '0'}">
-          <span>${name} (${acc.phone_number || 'Tanpa no.'}) ${isOnline ? '<span style="color: var(--accent-green);">●</span>' : '<span style="color: var(--text-muted);">○</span>'}</span>
-        </label>
-      `;
-    }).join('');
-  }
+  const joinChecklistCtrl = window.setupUniversalChecklist({
+    prefix: 'join',
+    itemsContainerId: 'join-account-items',
+    checkboxClass: 'join-acc-checkbox',
+    cachedAccountsGetter: () => cachedJoinAccounts
+  });
 
   async function populateJoinChecklist() {
-    if (!joinItemsContainer) return;
+    const container = document.getElementById('join-account-items');
+    if (!container) return;
     try {
       const res = await fetch('/api/accounts?limit=0', { headers: getAuthHeaders() });
       const data = await res.json();
       cachedJoinAccounts = data.accounts || [];
-      renderJoinChecklist(cachedJoinAccounts);
+      joinChecklistCtrl.render();
     } catch (e) {
-      joinItemsContainer.innerHTML = '<div style="color: var(--accent-rose); font-size: 0.8rem;">Gagal memuat daftar akun</div>';
+      container.innerHTML = '<div style="color: var(--accent-rose); font-size: 0.8rem;">Gagal memuat daftar akun</div>';
     }
-  }
-
-  if (joinSelectAll) {
-    joinSelectAll.addEventListener('click', () => {
-      document.querySelectorAll('.join-acc-checkbox').forEach(cb => cb.checked = true);
-    });
-  }
-  if (joinSelectNone) {
-    joinSelectNone.addEventListener('click', () => {
-      document.querySelectorAll('.join-acc-checkbox').forEach(cb => cb.checked = false);
-    });
-  }
-  if (joinSelectOnline) {
-    joinSelectOnline.addEventListener('click', () => {
-      document.querySelectorAll('.join-acc-checkbox').forEach(cb => {
-        cb.checked = cb.getAttribute('data-online') === '1';
-      });
-    });
-  }
-  if (joinSearchAccounts) {
-    joinSearchAccounts.addEventListener('input', (e) => {
-      const q = e.target.value.toLowerCase().trim();
-      const filtered = cachedJoinAccounts.filter(acc => {
-        const name = (acc.display_name || '').toLowerCase();
-        const user = (acc.username || '').toLowerCase();
-        const phone = (acc.phone_number || '').toLowerCase();
-        return name.includes(q) || user.includes(q) || phone.includes(q);
-      });
-      renderJoinChecklist(filtered);
-    });
   }
 
   if (joinRadioAll && joinRadioSelected && checklistContainer) {
@@ -701,58 +834,25 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  window.toggleProfileAccount = function(id, checked) {
-    const numId = parseInt(id);
-    if (checked) {
-      selectedProfileAccountIds.add(numId);
-    } else {
-      selectedProfileAccountIds.delete(numId);
-    }
-    updateProfileCountBadge();
-  };
-
-  function renderProfileChecklist(accounts) {
-    if (!profileItemsContainer) return;
-    if (accounts.length === 0) {
-      profileItemsContainer.innerHTML = '<div style="color: var(--text-muted); font-size: 0.8rem; padding: 6px;">Tidak ada akun yang sesuai</div>';
-      updateProfileCountBadge();
-      return;
-    }
-
-    profileItemsContainer.innerHTML = accounts.map(acc => {
-      const name = acc.display_name || acc.username || acc.phone_number || `Akun #${acc.id}`;
-      const isOnline = acc.is_active;
-      const isChecked = selectedProfileAccountIds.has(acc.id);
-      const tgId = acc.telegram_id ? `<span style="color: var(--accent-cyan); font-size: 0.7rem;">[ID: ${acc.telegram_id}]</span>` : '';
-
-      return `
-        <label style="display: flex; align-items: center; gap: 8px; font-size: 0.8rem; padding: 5px 6px; margin-bottom: 3px; border-radius: 6px; cursor: pointer; background: rgba(255,255,255,0.02);">
-          <input type="checkbox" class="profile-acc-checkbox" value="${acc.id}" ${isChecked ? 'checked' : ''} onchange="toggleProfileAccount(${acc.id}, this.checked)">
-          <span style="flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-            <strong>${escapeHtml(name)}</strong> (${escapeHtml(acc.phone_number || '-')}) ${tgId}
-          </span>
-          ${isOnline ? '<span style="color: var(--accent-green); font-size: 0.75rem;">● Online</span>' : '<span style="color: var(--text-muted); font-size: 0.75rem;">○ Offline</span>'}
-        </label>
-      `;
-    }).join('');
-
-    updateProfileCountBadge();
+  function updateProfileCountBadge() {
+    if (!profileSelectedCount) return;
+    const total = cachedProfileAccounts.length;
+    profileSelectedCount.textContent = `${selectedProfileAccountIds.size} dari ${total} akun dipilih`;
   }
+  window.updateProfileCountBadge = updateProfileCountBadge;
 
-  function getFilteredProfileAccounts() {
-    const q = (profileSearchAccounts ? profileSearchAccounts.value : '').toLowerCase().trim();
-    if (!q) return cachedProfileAccounts;
-    return cachedProfileAccounts.filter(acc => {
-      const name = (acc.display_name || '').toLowerCase();
-      const user = (acc.username || '').toLowerCase();
-      const phone = (acc.phone_number || '').toLowerCase();
-      const tgId = String(acc.telegram_id || '').toLowerCase();
-      return name.includes(q) || user.includes(q) || phone.includes(q) || tgId.includes(q);
-    });
-  }
+  const profileChecklistCtrl = window.setupUniversalChecklist({
+    prefix: 'profile',
+    itemsContainerId: 'profile-account-items',
+    checkboxClass: 'profile-acc-checkbox',
+    cachedAccountsGetter: () => cachedProfileAccounts,
+    selectedIdsSet: selectedProfileAccountIds,
+    onSelectionChanged: updateProfileCountBadge
+  });
 
   async function populateProfileChecklist() {
-    if (!profileItemsContainer) return;
+    const container = document.getElementById('profile-account-items');
+    if (!container) return;
     try {
       const res = await fetch('/api/accounts?limit=0', { headers: getAuthHeaders() });
       const data = await res.json();
@@ -760,44 +860,13 @@ document.addEventListener('DOMContentLoaded', () => {
       if (selectedProfileAccountIds.size === 0) {
         selectedProfileAccountIds = new Set(cachedProfileAccounts.map(a => a.id));
       }
-      renderProfileChecklist(cachedProfileAccounts);
+      profileChecklistCtrl.render();
+      updateProfileCountBadge();
     } catch (e) {
-      profileItemsContainer.innerHTML = '<div style="color: var(--accent-rose); font-size: 0.8rem; padding: 6px;">Gagal memuat akun</div>';
+      container.innerHTML = '<div style="color: var(--accent-rose); font-size: 0.8rem; padding: 6px;">Gagal memuat akun</div>';
     }
   }
   window.populateProfileChecklist = populateProfileChecklist;
-
-  if (profileSelectAll) {
-    profileSelectAll.addEventListener('click', () => {
-      const visible = getFilteredProfileAccounts();
-      visible.forEach(acc => selectedProfileAccountIds.add(acc.id));
-      renderProfileChecklist(visible);
-    });
-  }
-
-  if (profileSelectNone) {
-    profileSelectNone.addEventListener('click', () => {
-      const visible = getFilteredProfileAccounts();
-      visible.forEach(acc => selectedProfileAccountIds.delete(acc.id));
-      renderProfileChecklist(visible);
-    });
-  }
-
-  if (profileSelectOnline) {
-    profileSelectOnline.addEventListener('click', () => {
-      selectedProfileAccountIds.clear();
-      cachedProfileAccounts.forEach(acc => {
-        if (acc.is_active) selectedProfileAccountIds.add(acc.id);
-      });
-      renderProfileChecklist(getFilteredProfileAccounts());
-    });
-  }
-
-  if (profileSearchAccounts) {
-    profileSearchAccounts.addEventListener('input', () => {
-      renderProfileChecklist(getFilteredProfileAccounts());
-    });
-  }
 
   if (profileRadioAll && profileRadioSelected && profileChecklist) {
     profileRadioAll.addEventListener('change', () => {
@@ -907,9 +976,6 @@ document.addEventListener('DOMContentLoaded', () => {
         if (window.OperationManager) {
           window.OperationManager.setFinished('cancel-profile-btn');
         }
-      }
-    });
-  }
       }
     });
   }
@@ -1222,66 +1288,24 @@ document.addEventListener('DOMContentLoaded', () => {
   const cleanResults = document.getElementById('clean-results');
 
   let cachedCleanAccounts = [];
-
-  function renderCleanChecklist(accounts) {
-    if (!cleanItemsContainer) return;
-    if (accounts.length === 0) {
-      cleanItemsContainer.innerHTML = '<div style="color: var(--text-muted); font-size: 0.8rem; padding: 4px;">Tidak ada akun yang sesuai</div>';
-      return;
-    }
-
-    cleanItemsContainer.innerHTML = accounts.map(acc => {
-      const name = acc.display_name || acc.username || acc.phone_number || `Akun #${acc.id}`;
-      const isOnline = acc.is_active;
-      return `
-        <label style="display: flex; align-items: center; gap: 8px; font-size: 0.8rem; margin-bottom: 4px; cursor: pointer;">
-          <input type="checkbox" class="clean-acc-checkbox" value="${acc.id}" data-online="${isOnline ? '1' : '0'}">
-          <span>${name} (${acc.phone_number || 'Tanpa no.'}) ${isOnline ? '<span style="color: var(--accent-green);">●</span>' : '<span style="color: var(--text-muted);">○</span>'}</span>
-        </label>
-      `;
-    }).join('');
-  }
+  const cleanChecklistCtrl = window.setupUniversalChecklist({
+    prefix: 'clean',
+    itemsContainerId: 'clean-account-items',
+    checkboxClass: 'clean-acc-checkbox',
+    cachedAccountsGetter: () => cachedCleanAccounts
+  });
 
   async function populateCleanChecklist() {
-    if (!cleanItemsContainer) return;
+    const container = document.getElementById('clean-account-items');
+    if (!container) return;
     try {
       const res = await fetch('/api/accounts?limit=0', { headers: getAuthHeaders() });
       const data = await res.json();
       cachedCleanAccounts = data.accounts || [];
-      renderCleanChecklist(cachedCleanAccounts);
+      cleanChecklistCtrl.render();
     } catch (e) {
-      cleanItemsContainer.innerHTML = '<div style="color: var(--accent-rose); font-size: 0.8rem;">Gagal memuat akun</div>';
+      container.innerHTML = '<div style="color: var(--accent-rose); font-size: 0.8rem;">Gagal memuat akun</div>';
     }
-  }
-
-  if (cleanSelectAll) {
-    cleanSelectAll.addEventListener('click', () => {
-      document.querySelectorAll('.clean-acc-checkbox').forEach(cb => cb.checked = true);
-    });
-  }
-  if (cleanSelectNone) {
-    cleanSelectNone.addEventListener('click', () => {
-      document.querySelectorAll('.clean-acc-checkbox').forEach(cb => cb.checked = false);
-    });
-  }
-  if (cleanSelectOnline) {
-    cleanSelectOnline.addEventListener('click', () => {
-      document.querySelectorAll('.clean-acc-checkbox').forEach(cb => {
-        cb.checked = cb.getAttribute('data-online') === '1';
-      });
-    });
-  }
-  if (cleanSearchAccounts) {
-    cleanSearchAccounts.addEventListener('input', (e) => {
-      const q = e.target.value.toLowerCase().trim();
-      const filtered = cachedCleanAccounts.filter(acc => {
-        const name = (acc.display_name || '').toLowerCase();
-        const user = (acc.username || '').toLowerCase();
-        const phone = (acc.phone_number || '').toLowerCase();
-        return name.includes(q) || user.includes(q) || phone.includes(q);
-      });
-      renderCleanChecklist(filtered);
-    });
   }
 
   if (cleanRadioAll && cleanRadioSelected && cleanChecklist) {
@@ -1472,65 +1496,24 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  function renderSendmsgChecklist(accounts) {
-    if (!sendmsgItemsContainer) return;
-    if (accounts.length === 0) {
-      sendmsgItemsContainer.innerHTML = '<div style="color: var(--text-muted); font-size: 0.8rem; padding: 4px;">Tidak ada akun yang sesuai</div>';
-      return;
-    }
-
-    sendmsgItemsContainer.innerHTML = accounts.map(acc => {
-      const name = acc.display_name || acc.username || acc.phone_number || `Akun #${acc.id}`;
-      const isOnline = acc.is_active;
-      return `
-        <label style="display: flex; align-items: center; gap: 8px; font-size: 0.8rem; margin-bottom: 4px; cursor: pointer;">
-          <input type="checkbox" class="sendmsg-acc-checkbox" value="${acc.id}" data-online="${isOnline ? '1' : '0'}">
-          <span>${name} (${acc.phone_number || 'Tanpa no.'}) ${isOnline ? '<span style="color: var(--accent-green);">●</span>' : '<span style="color: var(--text-muted);">○</span>'}</span>
-        </label>
-      `;
-    }).join('');
-  }
+  const sendmsgChecklistCtrl = window.setupUniversalChecklist({
+    prefix: 'sendmsg',
+    itemsContainerId: 'sendmsg-account-items',
+    checkboxClass: 'sendmsg-acc-checkbox',
+    cachedAccountsGetter: () => cachedSendmsgAccounts
+  });
 
   async function populateSendmsgChecklist() {
-    if (!sendmsgItemsContainer) return;
+    const container = document.getElementById('sendmsg-account-items');
+    if (!container) return;
     try {
       const res = await fetch('/api/accounts?limit=0', { headers: getAuthHeaders() });
       const data = await res.json();
       cachedSendmsgAccounts = data.accounts || [];
-      renderSendmsgChecklist(cachedSendmsgAccounts);
+      sendmsgChecklistCtrl.render();
     } catch (e) {
-      sendmsgItemsContainer.innerHTML = '<div style="color: var(--accent-rose); font-size: 0.8rem;">Gagal memuat daftar akun</div>';
+      container.innerHTML = '<div style="color: var(--accent-rose); font-size: 0.8rem;">Gagal memuat daftar akun</div>';
     }
-  }
-
-  if (sendmsgSelectAll) {
-    sendmsgSelectAll.addEventListener('click', () => {
-      document.querySelectorAll('.sendmsg-acc-checkbox').forEach(cb => cb.checked = true);
-    });
-  }
-  if (sendmsgSelectNone) {
-    sendmsgSelectNone.addEventListener('click', () => {
-      document.querySelectorAll('.sendmsg-acc-checkbox').forEach(cb => cb.checked = false);
-    });
-  }
-  if (sendmsgSelectOnline) {
-    sendmsgSelectOnline.addEventListener('click', () => {
-      document.querySelectorAll('.sendmsg-acc-checkbox').forEach(cb => {
-        cb.checked = cb.getAttribute('data-online') === '1';
-      });
-    });
-  }
-  if (sendmsgSearchAccounts) {
-    sendmsgSearchAccounts.addEventListener('input', (e) => {
-      const q = e.target.value.toLowerCase().trim();
-      const filtered = cachedSendmsgAccounts.filter(acc => {
-        const name = (acc.display_name || '').toLowerCase();
-        const user = (acc.username || '').toLowerCase();
-        const phone = (acc.phone_number || '').toLowerCase();
-        return name.includes(q) || user.includes(q) || phone.includes(q);
-      });
-      renderSendmsgChecklist(filtered);
-    });
   }
 
   if (sendmsgRadioAll && sendmsgRadioSelected && sendmsgChecklistContainer) {
@@ -1678,66 +1661,24 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   let cachedContactsAccounts = [];
-
-  function renderContactsChecklist(accounts) {
-    if (!contactsItemsContainer) return;
-    if (accounts.length === 0) {
-      contactsItemsContainer.innerHTML = '<div style="color: var(--text-muted); font-size: 0.8rem; padding: 4px;">Tidak ada akun yang sesuai</div>';
-      return;
-    }
-
-    contactsItemsContainer.innerHTML = accounts.map(acc => {
-      const name = acc.display_name || acc.username || acc.phone_number || `Akun #${acc.id}`;
-      const isOnline = acc.is_active;
-      return `
-        <label style="display: flex; align-items: center; gap: 8px; font-size: 0.8rem; margin-bottom: 4px; cursor: pointer;">
-          <input type="checkbox" class="contacts-acc-checkbox" value="${acc.id}" data-online="${isOnline ? '1' : '0'}">
-          <span>${name} (${acc.phone_number || 'Tanpa no.'}) ${isOnline ? '<span style="color: var(--accent-green);">●</span>' : '<span style="color: var(--text-muted);">○</span>'}</span>
-        </label>
-      `;
-    }).join('');
-  }
+  const contactsChecklistCtrl = window.setupUniversalChecklist({
+    prefix: 'contacts',
+    itemsContainerId: 'contacts-account-items',
+    checkboxClass: 'contacts-acc-checkbox',
+    cachedAccountsGetter: () => cachedContactsAccounts
+  });
 
   async function populateContactsChecklist() {
-    if (!contactsItemsContainer) return;
+    const container = document.getElementById('contacts-account-items');
+    if (!container) return;
     try {
       const res = await fetch('/api/accounts?limit=0', { headers: getAuthHeaders() });
       const data = await res.json();
       cachedContactsAccounts = data.accounts || [];
-      renderContactsChecklist(cachedContactsAccounts);
+      contactsChecklistCtrl.render();
     } catch (e) {
-      contactsItemsContainer.innerHTML = '<div style="color: var(--accent-rose); font-size: 0.8rem;">Gagal memuat daftar akun</div>';
+      container.innerHTML = '<div style="color: var(--accent-rose); font-size: 0.8rem;">Gagal memuat daftar akun</div>';
     }
-  }
-
-  if (contactsSelectAll) {
-    contactsSelectAll.addEventListener('click', () => {
-      document.querySelectorAll('.contacts-acc-checkbox').forEach(cb => cb.checked = true);
-    });
-  }
-  if (contactsSelectNone) {
-    contactsSelectNone.addEventListener('click', () => {
-      document.querySelectorAll('.contacts-acc-checkbox').forEach(cb => cb.checked = false);
-    });
-  }
-  if (contactsSelectOnline) {
-    contactsSelectOnline.addEventListener('click', () => {
-      document.querySelectorAll('.contacts-acc-checkbox').forEach(cb => {
-        cb.checked = cb.getAttribute('data-online') === '1';
-      });
-    });
-  }
-  if (contactsSearchAccounts) {
-    contactsSearchAccounts.addEventListener('input', (e) => {
-      const q = e.target.value.toLowerCase().trim();
-      const filtered = cachedContactsAccounts.filter(acc => {
-        const name = (acc.display_name || '').toLowerCase();
-        const user = (acc.username || '').toLowerCase();
-        const phone = (acc.phone_number || '').toLowerCase();
-        return name.includes(q) || user.includes(q) || phone.includes(q);
-      });
-      renderContactsChecklist(filtered);
-    });
   }
 
   if (contactsRadioAll && contactsRadioSelected && contactsChecklistContainer) {
@@ -1910,72 +1851,33 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   let cachedChange2faAccounts = [];
-
-  function renderChange2faChecklist(accounts) {
-    if (!change2faItemsContainer) return;
-    if (accounts.length === 0) {
-      change2faItemsContainer.innerHTML = '<div style="color: var(--text-muted); font-size: 0.8rem; padding: 4px;">Tidak ada akun yang sesuai</div>';
-      return;
+  const change2faChecklistCtrl = window.setupUniversalChecklist({
+    prefix: 'change2fa',
+    itemsContainerId: 'change2fa-account-items',
+    checkboxClass: 'change2fa-acc-checkbox',
+    cachedAccountsGetter: () => cachedChange2faAccounts,
+    extraBadgesRenderer: (acc) => {
+      if (acc.twofa_password) {
+        return `<span style="color: var(--accent-green); font-size: 0.72rem;">[Sandi: ${escapeHtml(acc.twofa_password)}]</span>`;
+      }
+      if (acc.has_2fa === false || acc.twofa_status === 'no_2fa') {
+        return '<span style="color: var(--text-muted); font-size: 0.72rem;">[Tanpa 2FA]</span>';
+      }
+      return '<span style="color: var(--accent-amber); font-size: 0.72rem;">[2FA]</span>';
     }
-
-    change2faItemsContainer.innerHTML = accounts.map(acc => {
-      const name = acc.display_name || acc.username || acc.phone_number || `Akun #${acc.id}`;
-      const isOnline = acc.is_active;
-      const twofaInfo = acc.twofa_password
-        ? `<span style="color: var(--accent-green); font-size: 0.72rem;">[Sandi: ${escapeHtml(acc.twofa_password)}]</span>`
-        : (acc.has_2fa === false || acc.twofa_status === 'no_2fa'
-            ? '<span style="color: var(--text-muted); font-size: 0.72rem;">[Tanpa 2FA]</span>'
-            : '<span style="color: var(--accent-amber); font-size: 0.72rem;">[2FA]</span>');
-
-      return `
-        <label style="display: flex; align-items: center; gap: 8px; font-size: 0.8rem; margin-bottom: 4px; cursor: pointer;">
-          <input type="checkbox" class="change2fa-acc-checkbox" value="${acc.id}" data-online="${isOnline ? '1' : '0'}">
-          <span>${escapeHtml(name)} (${escapeHtml(acc.phone_number || '-')}) ${twofaInfo} ${isOnline ? '<span style="color: var(--accent-green);">●</span>' : '<span style="color: var(--text-muted);">○</span>'}</span>
-        </label>
-      `;
-    }).join('');
-  }
+  });
 
   async function populateChange2faChecklist() {
-    if (!change2faItemsContainer) return;
+    const container = document.getElementById('change2fa-account-items');
+    if (!container) return;
     try {
       const res = await fetch('/api/accounts?limit=0', { headers: getAuthHeaders() });
       const data = await res.json();
       cachedChange2faAccounts = data.accounts || [];
-      renderChange2faChecklist(cachedChange2faAccounts);
+      change2faChecklistCtrl.render();
     } catch (e) {
-      change2faItemsContainer.innerHTML = '<div style="color: var(--accent-rose); font-size: 0.8rem;">Gagal memuat daftar akun</div>';
+      container.innerHTML = '<div style="color: var(--accent-rose); font-size: 0.8rem;">Gagal memuat daftar akun</div>';
     }
-  }
-
-  if (change2faSelectAll) {
-    change2faSelectAll.addEventListener('click', () => {
-      document.querySelectorAll('.change2fa-acc-checkbox').forEach(cb => cb.checked = true);
-    });
-  }
-  if (change2faSelectNone) {
-    change2faSelectNone.addEventListener('click', () => {
-      document.querySelectorAll('.change2fa-acc-checkbox').forEach(cb => cb.checked = false);
-    });
-  }
-  if (change2faSelectOnline) {
-    change2faSelectOnline.addEventListener('click', () => {
-      document.querySelectorAll('.change2fa-acc-checkbox').forEach(cb => {
-        cb.checked = cb.getAttribute('data-online') === '1';
-      });
-    });
-  }
-  if (change2faSearchAccounts) {
-    change2faSearchAccounts.addEventListener('input', (e) => {
-      const q = e.target.value.toLowerCase().trim();
-      const filtered = cachedChange2faAccounts.filter(acc => {
-        const name = (acc.display_name || '').toLowerCase();
-        const user = (acc.username || '').toLowerCase();
-        const phone = (acc.phone_number || '').toLowerCase();
-        return name.includes(q) || user.includes(q) || phone.includes(q);
-      });
-      renderChange2faChecklist(filtered);
-    });
   }
 
   if (change2faRadioAll && change2faRadioSelected && change2faChecklistContainer) {

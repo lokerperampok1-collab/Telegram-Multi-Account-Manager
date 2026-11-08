@@ -611,14 +611,34 @@
                   </label>
                 </div>
 
-                <div id="join-account-checklist" style="display: none; padding: 10px; background: rgba(0,0,0,0.25); border-radius: var(--radius-sm); border: 1px solid var(--border-color);">
-                  <div style="display: flex; gap: 6px; margin-bottom: 8px; align-items: center; flex-wrap: wrap;">
+                <div id="join-account-checklist" style="display: none; padding: 12px; background: rgba(0,0,0,0.25); border-radius: var(--radius-sm); border: 1px solid var(--border-color);">
+                  <div style="display: flex; gap: 8px; margin-bottom: 10px; align-items: center; flex-wrap: wrap;">
                     <button type="button" class="btn-pill" id="join-select-all">Pilih Semua</button>
                     <button type="button" class="btn-pill" id="join-select-none">Batal</button>
                     <button type="button" class="btn-pill" id="join-select-online">Online Saja</button>
-                    <input type="text" id="join-search-accounts" placeholder="Cari..." style="margin-left: auto; padding: 3px 8px; font-size: 0.75rem; background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); border-radius: var(--radius-sm); color: var(--text-primary); width: 110px;">
+
+                    <div class="search-box" style="flex: 1; min-width: 140px;">
+                      <svg class="search-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="11" cy="11" r="8"></circle>
+                        <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                      </svg>
+                      <input type="text" id="join-search-accounts" class="search-input" placeholder="Cari nama, no HP..." style="font-size: 0.76rem; padding: 4px 22px 4px 28px;">
+                      <button class="search-clear-btn" id="join-search-clear-btn" title="Hapus pencarian" style="display: none;">&times;</button>
+                    </div>
+
+                    <div class="id-filter-wrapper" title="Cari awalan Telegram ID (misal: 9, 88...)" style="min-width: 120px;">
+                      <span class="id-filter-prefix" style="font-size: 0.68rem; left: 8px;">TG ID:</span>
+                      <input type="text" id="join-id-filter" class="filter-input-id" placeholder="Awalan ID..." style="min-width: 110px; padding: 4px 18px 4px 48px; font-size: 0.76rem;">
+                      <button class="id-filter-clear-btn" id="join-id-clear-btn" title="Reset filter TG ID" style="display: none;">&times;</button>
+                    </div>
+
+                    <select id="join-status-filter" class="filter-select" style="padding: 4px 8px; font-size: 0.76rem;">
+                      <option value="all">Semua Status</option>
+                      <option value="online">Online Saja</option>
+                      <option value="offline">Offline Saja</option>
+                    </select>
                   </div>
-                  <div id="join-account-items" style="max-height: 150px; overflow-y: auto;"></div>
+                  <div id="join-account-items" style="max-height: 180px; overflow-y: auto;"></div>
                 </div>
               </div>
 
@@ -724,14 +744,34 @@ Halo semuanya, selamat beraktivitas ya</textarea>
                   </label>
                 </div>
 
-                <div id="sendmsg-account-checklist" style="display: none; padding: 10px; background: rgba(0,0,0,0.25); border-radius: var(--radius-sm); border: 1px solid var(--border-color);">
-                  <div style="display: flex; gap: 6px; margin-bottom: 8px; align-items: center; flex-wrap: wrap;">
+                <div id="sendmsg-account-checklist" style="display: none; padding: 12px; background: rgba(0,0,0,0.25); border-radius: var(--radius-sm); border: 1px solid var(--border-color);">
+                  <div style="display: flex; gap: 8px; margin-bottom: 10px; align-items: center; flex-wrap: wrap;">
                     <button type="button" class="btn-pill" id="sendmsg-select-all">Pilih Semua</button>
                     <button type="button" class="btn-pill" id="sendmsg-select-none">Batal</button>
                     <button type="button" class="btn-pill" id="sendmsg-select-online">Online Saja</button>
-                    <input type="text" id="sendmsg-search-accounts" placeholder="Cari..." style="margin-left: auto; padding: 3px 8px; font-size: 0.75rem; background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); border-radius: var(--radius-sm); color: var(--text-primary); width: 110px;">
+
+                    <div class="search-box" style="flex: 1; min-width: 140px;">
+                      <svg class="search-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="11" cy="11" r="8"></circle>
+                        <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                      </svg>
+                      <input type="text" id="sendmsg-search-accounts" class="search-input" placeholder="Cari nama, no HP..." style="font-size: 0.76rem; padding: 4px 22px 4px 28px;">
+                      <button class="search-clear-btn" id="sendmsg-search-clear-btn" title="Hapus pencarian" style="display: none;">&times;</button>
+                    </div>
+
+                    <div class="id-filter-wrapper" title="Cari awalan Telegram ID (misal: 9, 88...)" style="min-width: 120px;">
+                      <span class="id-filter-prefix" style="font-size: 0.68rem; left: 8px;">TG ID:</span>
+                      <input type="text" id="sendmsg-id-filter" class="filter-input-id" placeholder="Awalan ID..." style="min-width: 110px; padding: 4px 18px 4px 48px; font-size: 0.76rem;">
+                      <button class="id-filter-clear-btn" id="sendmsg-id-clear-btn" title="Reset filter TG ID" style="display: none;">&times;</button>
+                    </div>
+
+                    <select id="sendmsg-status-filter" class="filter-select" style="padding: 4px 8px; font-size: 0.76rem;">
+                      <option value="all">Semua Status</option>
+                      <option value="online">Online Saja</option>
+                      <option value="offline">Offline Saja</option>
+                    </select>
                   </div>
-                  <div id="sendmsg-account-items" style="max-height: 150px; overflow-y: auto;"></div>
+                  <div id="sendmsg-account-items" style="max-height: 180px; overflow-y: auto;"></div>
                 </div>
               </div>
 
@@ -860,11 +900,31 @@ Halo semuanya, selamat beraktivitas ya</textarea>
                 </div>
 
                 <div id="profile-account-checklist" style="display: none; padding: 12px; background: rgba(0,0,0,0.28); border-radius: var(--radius-sm); border: 1px solid var(--border-color);">
-                  <div style="display: flex; gap: 6px; margin-bottom: 10px; align-items: center; flex-wrap: wrap;">
+                  <div style="display: flex; gap: 8px; margin-bottom: 10px; align-items: center; flex-wrap: wrap;">
                     <button type="button" class="btn-pill" id="profile-select-all">Pilih Semua</button>
                     <button type="button" class="btn-pill" id="profile-select-none">Batal Semua</button>
                     <button type="button" class="btn-pill" id="profile-select-online">Online Saja</button>
-                    <input type="text" id="profile-search-accounts" placeholder="Cari nomor/nama/ID..." style="margin-left: auto; padding: 4px 10px; font-size: 0.78rem; background: rgba(0,0,0,0.35); border: 1px solid var(--border-color); border-radius: var(--radius-sm); color: var(--text-primary); width: 160px;">
+
+                    <div class="search-box" style="flex: 1; min-width: 140px;">
+                      <svg class="search-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="11" cy="11" r="8"></circle>
+                        <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                      </svg>
+                      <input type="text" id="profile-search-accounts" class="search-input" placeholder="Cari nama, no HP..." style="font-size: 0.76rem; padding: 4px 22px 4px 28px;">
+                      <button class="search-clear-btn" id="profile-search-clear-btn" title="Hapus pencarian" style="display: none;">&times;</button>
+                    </div>
+
+                    <div class="id-filter-wrapper" title="Cari awalan Telegram ID (misal: 9, 88...)" style="min-width: 120px;">
+                      <span class="id-filter-prefix" style="font-size: 0.68rem; left: 8px;">TG ID:</span>
+                      <input type="text" id="profile-id-filter" class="filter-input-id" placeholder="Awalan ID..." style="min-width: 110px; padding: 4px 18px 4px 48px; font-size: 0.76rem;">
+                      <button class="id-filter-clear-btn" id="profile-id-clear-btn" title="Reset filter TG ID" style="display: none;">&times;</button>
+                    </div>
+
+                    <select id="profile-status-filter" class="filter-select" style="padding: 4px 8px; font-size: 0.76rem;">
+                      <option value="all">Semua Status</option>
+                      <option value="online">Online Saja</option>
+                      <option value="offline">Offline Saja</option>
+                    </select>
                   </div>
                   <div id="profile-account-items" style="max-height: 220px; overflow-y: auto; padding-right: 4px;">
                     <div style="color: var(--text-muted); font-size: 0.8rem; padding: 4px;">Memuat daftar akun...</div>
@@ -944,14 +1004,34 @@ Halo semuanya, selamat beraktivitas ya</textarea>
                   </label>
                 </div>
 
-                <div id="clean-account-checklist" style="display: none; padding: 10px; background: rgba(0,0,0,0.25); border-radius: var(--radius-sm); border: 1px solid var(--border-color);">
-                  <div style="display: flex; gap: 6px; margin-bottom: 8px; align-items: center; flex-wrap: wrap;">
+                <div id="clean-account-checklist" style="display: none; padding: 12px; background: rgba(0,0,0,0.25); border-radius: var(--radius-sm); border: 1px solid var(--border-color);">
+                  <div style="display: flex; gap: 8px; margin-bottom: 10px; align-items: center; flex-wrap: wrap;">
                     <button type="button" class="btn-pill" id="clean-select-all">Pilih Semua</button>
                     <button type="button" class="btn-pill" id="clean-select-none">Batal</button>
                     <button type="button" class="btn-pill" id="clean-select-online">Online Saja</button>
-                    <input type="text" id="clean-search-accounts" placeholder="Cari..." style="margin-left: auto; padding: 3px 8px; font-size: 0.75rem; background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); border-radius: var(--radius-sm); color: var(--text-primary); width: 110px;">
+
+                    <div class="search-box" style="flex: 1; min-width: 140px;">
+                      <svg class="search-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="11" cy="11" r="8"></circle>
+                        <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                      </svg>
+                      <input type="text" id="clean-search-accounts" class="search-input" placeholder="Cari nama, no HP..." style="font-size: 0.76rem; padding: 4px 22px 4px 28px;">
+                      <button class="search-clear-btn" id="clean-search-clear-btn" title="Hapus pencarian" style="display: none;">&times;</button>
+                    </div>
+
+                    <div class="id-filter-wrapper" title="Cari awalan Telegram ID (misal: 9, 88...)" style="min-width: 120px;">
+                      <span class="id-filter-prefix" style="font-size: 0.68rem; left: 8px;">TG ID:</span>
+                      <input type="text" id="clean-id-filter" class="filter-input-id" placeholder="Awalan ID..." style="min-width: 110px; padding: 4px 18px 4px 48px; font-size: 0.76rem;">
+                      <button class="id-filter-clear-btn" id="clean-id-clear-btn" title="Reset filter TG ID" style="display: none;">&times;</button>
+                    </div>
+
+                    <select id="clean-status-filter" class="filter-select" style="padding: 4px 8px; font-size: 0.76rem;">
+                      <option value="all">Semua Status</option>
+                      <option value="online">Online Saja</option>
+                      <option value="offline">Offline Saja</option>
+                    </select>
                   </div>
-                  <div id="clean-account-items" style="max-height: 150px; overflow-y: auto;"></div>
+                  <div id="clean-account-items" style="max-height: 180px; overflow-y: auto;"></div>
                 </div>
               </div>
 
@@ -1000,14 +1080,34 @@ Halo semuanya, selamat beraktivitas ya</textarea>
                   </label>
                 </div>
 
-                <div id="contacts-account-checklist" style="display: none; padding: 10px; background: rgba(0,0,0,0.25); border-radius: var(--radius-sm); border: 1px solid var(--border-color);">
-                  <div style="display: flex; gap: 6px; margin-bottom: 8px; align-items: center; flex-wrap: wrap;">
+                <div id="contacts-account-checklist" style="display: none; padding: 12px; background: rgba(0,0,0,0.25); border-radius: var(--radius-sm); border: 1px solid var(--border-color);">
+                  <div style="display: flex; gap: 8px; margin-bottom: 10px; align-items: center; flex-wrap: wrap;">
                     <button type="button" class="btn-pill" id="contacts-select-all">Pilih Semua</button>
                     <button type="button" class="btn-pill" id="contacts-select-none">Batal</button>
                     <button type="button" class="btn-pill" id="contacts-select-online">Online Saja</button>
-                    <input type="text" id="contacts-search-accounts" placeholder="Cari..." style="margin-left: auto; padding: 3px 8px; font-size: 0.75rem; background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); border-radius: var(--radius-sm); color: var(--text-primary); width: 110px;">
+
+                    <div class="search-box" style="flex: 1; min-width: 140px;">
+                      <svg class="search-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="11" cy="11" r="8"></circle>
+                        <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                      </svg>
+                      <input type="text" id="contacts-search-accounts" class="search-input" placeholder="Cari nama, no HP..." style="font-size: 0.76rem; padding: 4px 22px 4px 28px;">
+                      <button class="search-clear-btn" id="contacts-search-clear-btn" title="Hapus pencarian" style="display: none;">&times;</button>
+                    </div>
+
+                    <div class="id-filter-wrapper" title="Cari awalan Telegram ID (misal: 9, 88...)" style="min-width: 120px;">
+                      <span class="id-filter-prefix" style="font-size: 0.68rem; left: 8px;">TG ID:</span>
+                      <input type="text" id="contacts-id-filter" class="filter-input-id" placeholder="Awalan ID..." style="min-width: 110px; padding: 4px 18px 4px 48px; font-size: 0.76rem;">
+                      <button class="id-filter-clear-btn" id="contacts-id-clear-btn" title="Reset filter TG ID" style="display: none;">&times;</button>
+                    </div>
+
+                    <select id="contacts-status-filter" class="filter-select" style="padding: 4px 8px; font-size: 0.76rem;">
+                      <option value="all">Semua Status</option>
+                      <option value="online">Online Saja</option>
+                      <option value="offline">Offline Saja</option>
+                    </select>
                   </div>
-                  <div id="contacts-account-items" style="max-height: 150px; overflow-y: auto;"></div>
+                  <div id="contacts-account-items" style="max-height: 180px; overflow-y: auto;"></div>
                 </div>
               </div>
 
@@ -1113,12 +1213,32 @@ Halo semuanya, selamat beraktivitas ya</textarea>
                   </label>
                 </div>
 
-                <div id="change2fa-account-checklist" style="display: none; padding: 10px; background: rgba(0,0,0,0.25); border-radius: var(--radius-sm); border: 1px solid var(--border-color);">
-                  <div style="display: flex; gap: 6px; margin-bottom: 8px; align-items: center; flex-wrap: wrap;">
+                <div id="change2fa-account-checklist" style="display: none; padding: 12px; background: rgba(0,0,0,0.25); border-radius: var(--radius-sm); border: 1px solid var(--border-color);">
+                  <div style="display: flex; gap: 8px; margin-bottom: 10px; align-items: center; flex-wrap: wrap;">
                     <button type="button" class="btn-pill" id="change2fa-select-all">Pilih Semua</button>
                     <button type="button" class="btn-pill" id="change2fa-select-none">Batal</button>
                     <button type="button" class="btn-pill" id="change2fa-select-online">Online Saja</button>
-                    <input type="text" id="change2fa-search-accounts" placeholder="Cari nomor/nama..." style="margin-left: auto; padding: 3px 8px; font-size: 0.75rem; background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); border-radius: var(--radius-sm); color: var(--text-primary); width: 130px;">
+
+                    <div class="search-box" style="flex: 1; min-width: 140px;">
+                      <svg class="search-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="11" cy="11" r="8"></circle>
+                        <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                      </svg>
+                      <input type="text" id="change2fa-search-accounts" class="search-input" placeholder="Cari nama, no HP..." style="font-size: 0.76rem; padding: 4px 22px 4px 28px;">
+                      <button class="search-clear-btn" id="change2fa-search-clear-btn" title="Hapus pencarian" style="display: none;">&times;</button>
+                    </div>
+
+                    <div class="id-filter-wrapper" title="Cari awalan Telegram ID (misal: 9, 88...)" style="min-width: 120px;">
+                      <span class="id-filter-prefix" style="font-size: 0.68rem; left: 8px;">TG ID:</span>
+                      <input type="text" id="change2fa-id-filter" class="filter-input-id" placeholder="Awalan ID..." style="min-width: 110px; padding: 4px 18px 4px 48px; font-size: 0.76rem;">
+                      <button class="id-filter-clear-btn" id="change2fa-id-clear-btn" title="Reset filter TG ID" style="display: none;">&times;</button>
+                    </div>
+
+                    <select id="change2fa-status-filter" class="filter-select" style="padding: 4px 8px; font-size: 0.76rem;">
+                      <option value="all">Semua Status</option>
+                      <option value="online">Online Saja</option>
+                      <option value="offline">Offline Saja</option>
+                    </select>
                   </div>
                   <div id="change2fa-account-items" style="max-height: 180px; overflow-y: auto;"></div>
                 </div>
@@ -1445,11 +1565,31 @@ Halo semuanya, selamat beraktivitas ya</textarea>
           </div>
 
           <div style="padding: 12px; background: rgba(0,0,0,0.28); border-radius: var(--radius-sm); border: 1px solid var(--border-color);">
-            <div style="display: flex; gap: 6px; margin-bottom: 10px; align-items: center; flex-wrap: wrap;">
+            <div style="display: flex; gap: 8px; margin-bottom: 10px; align-items: center; flex-wrap: wrap;">
               <button type="button" class="btn-pill" id="export-select-all">Pilih Semua</button>
               <button type="button" class="btn-pill" id="export-select-none">Batal Semua</button>
               <button type="button" class="btn-pill" id="export-select-online">Online Saja</button>
-              <input type="text" id="export-search-accounts" placeholder="Cari nama, no HP, TG ID..." style="margin-left: auto; padding: 4px 10px; font-size: 0.78rem; background: rgba(0,0,0,0.35); border: 1px solid var(--border-color); border-radius: var(--radius-sm); color: var(--text-primary); width: 170px;">
+
+              <div class="search-box" style="flex: 1; min-width: 140px;">
+                <svg class="search-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="11" cy="11" r="8"></circle>
+                  <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                </svg>
+                <input type="text" id="export-search-accounts" class="search-input" placeholder="Cari nama, no HP..." style="font-size: 0.76rem; padding: 4px 22px 4px 28px;">
+                <button class="search-clear-btn" id="export-search-clear-btn" title="Hapus pencarian" style="display: none;">&times;</button>
+              </div>
+
+              <div class="id-filter-wrapper" title="Cari awalan Telegram ID (misal: 9, 88...)" style="min-width: 120px;">
+                <span class="id-filter-prefix" style="font-size: 0.68rem; left: 8px;">TG ID:</span>
+                <input type="text" id="export-id-filter" class="filter-input-id" placeholder="Awalan ID..." style="min-width: 110px; padding: 4px 18px 4px 48px; font-size: 0.76rem;">
+                <button class="id-filter-clear-btn" id="export-id-clear-btn" title="Reset filter TG ID" style="display: none;">&times;</button>
+              </div>
+
+              <select id="export-status-filter" class="filter-select" style="padding: 4px 8px; font-size: 0.76rem;">
+                <option value="all">Semua Status</option>
+                <option value="online">Online Saja</option>
+                <option value="offline">Offline Saja</option>
+              </select>
             </div>
             <div id="export-account-items" style="max-height: 250px; overflow-y: auto; padding-right: 4px;">
               <div style="color: var(--text-muted); font-size: 0.82rem; padding: 8px;">Memuat daftar akun...</div>
