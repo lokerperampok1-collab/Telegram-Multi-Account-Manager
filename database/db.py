@@ -36,6 +36,8 @@ async def init_db():
                 twofa_password TEXT DEFAULT NULL,
                 twofa_status TEXT DEFAULT NULL,
                 twofa_reset_until TEXT DEFAULT NULL,
+                spambot_status TEXT DEFAULT NULL,
+                spambot_message TEXT DEFAULT NULL,
                 FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
             );
         """)
@@ -45,7 +47,9 @@ async def init_db():
             "twofa_hint TEXT DEFAULT NULL",
             "twofa_password TEXT DEFAULT NULL",
             "twofa_status TEXT DEFAULT NULL",
-            "twofa_reset_until TEXT DEFAULT NULL"
+            "twofa_reset_until TEXT DEFAULT NULL",
+            "spambot_status TEXT DEFAULT NULL",
+            "spambot_message TEXT DEFAULT NULL"
         ]:
             try:
                 await db.execute(f"ALTER TABLE telegram_accounts ADD COLUMN {col_def};")

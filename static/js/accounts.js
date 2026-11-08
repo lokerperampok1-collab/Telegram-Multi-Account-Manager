@@ -8,6 +8,7 @@ let accountPagination = {
   status: 'all',
   idFilter: '',
   twofa: 'all',
+  spambot: 'all',
   sort: 'id_desc'
 };
 
@@ -31,6 +32,9 @@ async function loadAccounts(targetPage = null) {
     }
     if (accountPagination.twofa && accountPagination.twofa !== 'all') {
       url += `&twofa=${encodeURIComponent(accountPagination.twofa)}`;
+    }
+    if (accountPagination.spambot && accountPagination.spambot !== 'all') {
+      url += `&spambot=${encodeURIComponent(accountPagination.spambot)}`;
     }
     if (accountPagination.idFilter) {
       url += `&id_filter=${encodeURIComponent(accountPagination.idFilter)}`;
@@ -174,8 +178,8 @@ function renderAccounts(accounts) {
           </div>
           <div class="detail-row">
             <span>SpamBot</span>
-            <span id="health-badge-${acc.id}" style="color: var(--accent-cyan); cursor: pointer; font-weight: 500;" onclick="checkAccountHealth(${acc.id})" title="Klik untuk cek @SpamBot">
-              🔍 Cek Status
+            <span id="health-badge-${acc.id}" style="cursor: pointer; font-weight: 500;" onclick="checkAccountHealth(${acc.id})" title="${escapeHtml(acc.spambot_message || 'Klik untuk cek @SpamBot')}">
+              ${getSpambotBadgeHtml(acc)}
             </span>
           </div>
         </div>
@@ -298,14 +302,18 @@ async function checkAccountHealth(accountId) {
     }
 
     if (badge) {
-      if (data.status === 'clean') {
-        badge.innerHTML = '<span style="color: var(--accent-green);">🟢 Clean / Normal</span>';
+      if (data.status === 'perm_limited') {
+        badge.innerHTML = `<span style="color: var(--accent-rose); font-weight: 600;" title="${escapeHtml(data.message || '')}">🔴 Limit Permanen</span>`;
+      } else if (data.status === 'clean') {
+        badge.innerHTML = '<span style="color: var(--accent-green); font-weight: 600;">🟢 Clean / Normal</span>';
+      } else if (data.status === 'temp_limited') {
+        badge.innerHTML = `<span style="color: var(--accent-amber); font-weight: 600;" title="${escapeHtml(data.message || '')}">🟡 Limit Sementara</span>`;
       } else if (data.status === 'limited') {
-        badge.innerHTML = '<span style="color: var(--accent-amber);">🟡 Limited</span>';
+        badge.innerHTML = `<span style="color: var(--accent-amber); font-weight: 600;" title="${escapeHtml(data.message || '')}">🟡 Limited</span>`;
       } else if (data.status === 'banned') {
-        badge.innerHTML = '<span style="color: var(--accent-rose);">🔴 Banned/Mati</span>';
+        badge.innerHTML = '<span style="color: var(--accent-rose); font-weight: 600;">🔴 Banned/Mati</span>';
       } else {
-        badge.innerHTML = `<span style="color: var(--text-muted);">⚪ ${data.badge || 'Unknown'}</span>`;
+        badge.innerHTML = `<span style="color: var(--text-muted);">⚪ ${escapeHtml(data.badge || 'Unknown')}</span>`;
       }
     }
     showToast(data.message || 'Pemeriksaan status selesai', data.status === 'clean' ? 'success' : 'info');
@@ -428,16 +436,20 @@ async function checkAllAccountsHealth() {
       data.results.forEach(r => {
         const badge = document.getElementById(`health-badge-${r.account_id}`);
         if (badge) {
-          if (r.status === 'clean') {
-            badge.innerHTML = '<span style="color: var(--accent-green);">🟢 Clean / Normal</span>';
+          if (r.status === 'perm_limited') {
+            badge.innerHTML = `<span style="color: var(--accent-rose); font-weight: 600;" title="${escapeHtml(r.message || '')}">🔴 Limit Permanen</span>`;
+          } else if (r.status === 'clean') {
+            badge.innerHTML = '<span style="color: var(--accent-green); font-weight: 600;">🟢 Clean / Normal</span>';
+          } else if (r.status === 'temp_limited') {
+            badge.innerHTML = `<span style="color: var(--accent-amber); font-weight: 600;" title="${escapeHtml(r.message || '')}">🟡 Limit Sementara</span>`;
           } else if (r.status === 'limited') {
-            badge.innerHTML = '<span style="color: var(--accent-amber);">🟡 Limited</span>';
+            badge.innerHTML = `<span style="color: var(--accent-amber); font-weight: 600;" title="${escapeHtml(r.message || '')}">🟡 Limited</span>`;
           } else if (r.status === 'banned') {
-            badge.innerHTML = '<span style="color: var(--accent-rose);">🔴 Banned/Mati</span>';
+            badge.innerHTML = '<span style="color: var(--accent-rose); font-weight: 600;">🔴 Banned/Mati</span>';
           } else if (r.status === 'cancelled') {
             badge.innerHTML = '<span style="color: var(--accent-amber);">⛔ Dibatalkan</span>';
           } else {
-            badge.innerHTML = `<span style="color: var(--text-muted);">⚪ ${r.badge || 'Unknown'}</span>`;
+            badge.innerHTML = `<span style="color: var(--text-muted);">⚪ ${escapeHtml(r.badge || 'Unknown')}</span>`;
           }
         }
       });
@@ -457,6 +469,28 @@ async function checkAllAccountsHealth() {
     }
   }
 }
+
+// ----------------- SpamBot Badge Helper -----------------
+
+function getSpambotBadgeHtml(acc) {
+  if (acc.spambot_status === 'perm_limited') {
+    return `<span style="color: var(--accent-rose); font-weight: 600;" title="${escapeHtml(acc.spambot_message || 'Akun terkena Limit Permanen / Harsh response')}">🔴 Limit Permanen</span>`;
+  }
+  if (acc.spambot_status === 'temp_limited') {
+    return `<span style="color: var(--accent-amber); font-weight: 600;" title="${escapeHtml(acc.spambot_message || 'Akun dibatasi sementara')}">🟡 Limit Sementara</span>`;
+  }
+  if (acc.spambot_status === 'clean') {
+    return `<span style="color: var(--accent-green); font-weight: 600;" title="${escapeHtml(acc.spambot_message || 'Akun Normal, bebas limit')}">🟢 Clean / Normal</span>`;
+  }
+  if (acc.spambot_status === 'limited') {
+    return `<span style="color: var(--accent-amber); font-weight: 600;" title="${escapeHtml(acc.spambot_message || 'Akun Limited')}">🟡 Limited</span>`;
+  }
+  if (acc.spambot_status === 'banned') {
+    return `<span style="color: var(--accent-rose); font-weight: 600;" title="${escapeHtml(acc.spambot_message || 'Sesi mati')}">🔴 Banned/Mati</span>`;
+  }
+  return '<span style="color: var(--accent-cyan); font-weight: 500;" title="Klik untuk cek status @SpamBot">🔍 Cek Status</span>';
+}
+window.getSpambotBadgeHtml = getSpambotBadgeHtml;
 
 // ----------------- 2FA Checker Logic -----------------
 
@@ -1136,6 +1170,15 @@ document.addEventListener('DOMContentLoaded', () => {
   if (twofaFilter) {
     twofaFilter.addEventListener('change', (e) => {
       accountPagination.twofa = e.target.value;
+      accountPagination.page = 1;
+      loadAccounts();
+    });
+  }
+
+  const spambotFilter = document.getElementById('account-spambot-filter');
+  if (spambotFilter) {
+    spambotFilter.addEventListener('change', (e) => {
+      accountPagination.spambot = e.target.value;
       accountPagination.page = 1;
       loadAccounts();
     });

@@ -152,6 +152,7 @@ class TelegramAccountModel:
         telegram_id_filter: Optional[str] = None,
         id_filter: Optional[str] = None,
         twofa_filter: Optional[str] = None,
+        spambot_filter: Optional[str] = None,
         sort: Optional[str] = "id_desc"
     ) -> Dict[str, Any]:
         """Returns paginated and filtered accounts for high scalability (100-1000+ accounts)."""
@@ -165,9 +166,9 @@ class TelegramAccountModel:
                 clean_s = search.strip()
                 s = f"%{clean_s}%"
                 s_prefix = f"{clean_s}%"
-                # Search matches Telegram ID prefix, phone, name, or username
-                where_clauses.append("(CAST(telegram_id AS TEXT) LIKE ? OR phone_number LIKE ? OR display_name LIKE ? OR username LIKE ?)")
-                params.extend([s_prefix, s, s, s])
+                # Search matches Telegram ID prefix, phone, name, username, or spambot info
+                where_clauses.append("(CAST(telegram_id AS TEXT) LIKE ? OR phone_number LIKE ? OR display_name LIKE ? OR username LIKE ? OR spambot_status LIKE ? OR spambot_message LIKE ?)")
+                params.extend([s_prefix, s, s, s, s, s])
 
             # Telegram ID prefix search: e.g. "62", "78", or comma-separated "62, 78"
             target_tg_filter = telegram_id_filter or id_filter
@@ -205,6 +206,18 @@ class TelegramAccountModel:
             elif twofa_filter == "unknown":
                 where_clauses.append("has_2fa IS NULL")
 
+            # SpamBot Health Filter
+            if spambot_filter == "perm_limited":
+                where_clauses.append("spambot_status = 'perm_limited'")
+            elif spambot_filter == "temp_limited":
+                where_clauses.append("spambot_status = 'temp_limited'")
+            elif spambot_filter == "clean":
+                where_clauses.append("spambot_status = 'clean'")
+            elif spambot_filter == "limited":
+                where_clauses.append("(spambot_status = 'perm_limited' OR spambot_status = 'temp_limited' OR spambot_status = 'limited')")
+            elif spambot_filter == "unverified":
+                where_clauses.append("spambot_status IS NULL")
+
             where_sql = " AND ".join(where_clauses)
 
             count_cur = await db.execute(f"SELECT COUNT(*) as count FROM telegram_accounts WHERE {where_sql}", params)
@@ -227,7 +240,9 @@ class TelegramAccountModel:
                 order_by = "id DESC"
 
             query = f"""
-                SELECT id, user_id, phone_number, display_name, username, telegram_id, is_active, last_connected, added_at, has_2fa, twofa_hint, twofa_password, twofa_status, twofa_reset_until
+                SELECT id, user_id, phone_number, display_name, username, telegram_id, is_active, last_connected, added_at,
+                       has_2fa, twofa_hint, twofa_password, twofa_status, twofa_reset_until,
+                       spambot_status, spambot_message
                 FROM telegram_accounts
                 WHERE {where_sql}
                 ORDER BY {order_by}
@@ -306,7 +321,8 @@ class TelegramAccountModel:
             cursor = await db.execute(
                 """
                 SELECT id, user_id, phone_number, display_name, username, telegram_id, session_string, is_active, last_connected, added_at,
-                       has_2fa, twofa_hint, twofa_password, twofa_status, twofa_reset_until
+                       has_2fa, twofa_hint, twofa_password, twofa_status, twofa_reset_until,
+                       spambot_status, spambot_message
                 FROM telegram_accounts
                 WHERE user_id = ?
                 ORDER BY id DESC
@@ -315,6 +331,16 @@ class TelegramAccountModel:
             )
             rows = await cursor.fetchall()
             return [dict(r) for r in rows]
+
+    @staticmethod
+    async def update_spambot_status(account_id: int, spambot_status: Optional[str], spambot_message: Optional[str] = None):
+        """Updates SpamBot check status and message for an account."""
+        async with aiosqlite.connect(settings.DB_PATH) as db:
+            await db.execute(
+                "UPDATE telegram_accounts SET spambot_status = ?, spambot_message = ? WHERE id = ?",
+                (spambot_status, spambot_message, account_id)
+            )
+            await db.commit()
 
     @staticmethod
     async def get_distinct_2fa_passwords(user_id: int) -> List[str]:

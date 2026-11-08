@@ -1383,23 +1383,46 @@ class ClientManager:
                 await conv.send_message("/start")
                 response = await conv.get_response()
                 text = response.text.lower()
-                if "no limits" in text or "free" in text or "tidak ada batasan" in text or "good news" in text:
-                    return {
-                        "status": "clean",
-                        "badge": "Clean / Normal",
-                        "message": "Akun normal, tidak ada pembatasan dari Telegram."
-                    }
+                resp_text = response.text.strip()
+
+                # Deteksi Limit Permanen (Harsh response / limited by mistake)
+                is_perm = (
+                    "harsh response" in text or
+                    "limited by mistake" in text or
+                    "i’m very sorry that you had to contact me" in text or
+                    "i'm very sorry that you had to contact me" in text
+                )
+
+                if is_perm:
+                    status = "perm_limited"
+                    badge = "Limit Permanen"
+                    message = resp_text
+                elif "no limits" in text or "free" in text or "tidak ada batasan" in text or "good news" in text:
+                    status = "clean"
+                    badge = "Clean / Normal"
+                    message = resp_text or "Akun normal, tidak ada pembatasan dari Telegram."
+                elif "temporarily" in text or "until" in text:
+                    status = "temp_limited"
+                    badge = "Limit Sementara"
+                    message = resp_text
                 else:
-                    return {
-                        "status": "limited",
-                        "badge": "Limited / Muted",
-                        "message": response.text[:200]
-                    }
+                    status = "limited"
+                    badge = "Limited / Muted"
+                    message = resp_text
+
+                await TelegramAccountModel.update_spambot_status(account_id, status, message)
+                return {
+                    "status": status,
+                    "badge": badge,
+                    "message": message
+                }
         except PeerFloodError:
+            msg = "PeerFloodError: Akun dibatasi untuk mengirim pesan baru."
+            await TelegramAccountModel.update_spambot_status(account_id, "limited", msg)
             return {
                 "status": "limited",
                 "badge": "Limited / Muted",
-                "message": "PeerFloodError: Akun dibatasi untuk mengirim pesan baru."
+                "message": msg
             }
         except FloodWaitError as e:
             return {

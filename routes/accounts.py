@@ -40,6 +40,7 @@ async def list_accounts(
     telegram_id: Optional[str] = None,
     id_filter: Optional[str] = None,
     twofa: Optional[str] = None,
+    spambot: Optional[str] = None,
     sort: Optional[str] = "id_desc",
     current_user: dict = Depends(get_current_user)
 ):
@@ -53,6 +54,7 @@ async def list_accounts(
         status=status,
         telegram_id_filter=tg_filter,
         twofa_filter=twofa,
+        spambot_filter=spambot,
         sort=sort
     )
     return {
