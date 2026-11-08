@@ -1171,11 +1171,27 @@ Halo semuanya, selamat beraktivitas ya</textarea>
               </div>
 
               <!-- Filter & Search Toolbar -->
-              <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 14px; padding: 12px; background: rgba(0,0,0,0.25); border-radius: var(--radius-sm); border: 1px solid var(--border-color);">
-                <input type="text" id="session-search-input" placeholder="Cari nama, nomor HP, TG ID..." class="form-input" style="flex: 1; min-width: 180px; padding: 6px 12px; font-size: 0.82rem;">
-                
+              <div class="accounts-filter-bar" style="margin-bottom: 14px; padding: 12px; background: rgba(0,0,0,0.25); border-radius: var(--radius-sm); border: 1px solid var(--border-color); display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                <!-- Search Box (Nama / Nomor / Username) -->
+                <div class="search-box" style="flex: 1; min-width: 180px;">
+                  <svg class="search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="11" cy="11" r="8"></circle>
+                    <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                  </svg>
+                  <input type="text" id="session-search-input" class="search-input" placeholder="Cari nama, nomor HP, username...">
+                  <button class="search-clear-btn" id="session-search-clear-btn" title="Hapus pencarian" style="display: none;">&times;</button>
+                </div>
+
+                <!-- Filter by Telegram ID Prefix -->
+                <div class="id-filter-wrapper" title="Cari awalan Telegram ID (misal: ketik 92, 91, 88...)">
+                  <span class="id-filter-prefix">TG ID:</span>
+                  <input type="text" id="session-id-filter" class="filter-input-id" placeholder="Awalan ID..." style="min-width: 135px; padding-left: 56px;">
+                  <button class="id-filter-clear-btn" id="session-id-clear-btn" title="Reset filter Telegram ID" style="display: none;">&times;</button>
+                </div>
+
+                <!-- Status Filter -->
                 <select id="session-status-filter" class="filter-select" style="padding: 6px 10px; font-size: 0.82rem;">
-                  <option value="all">Semua Akun</option>
+                  <option value="all">Semua Status</option>
                   <option value="online">Hanya Online</option>
                   <option value="offline">Hanya Offline</option>
                 </select>

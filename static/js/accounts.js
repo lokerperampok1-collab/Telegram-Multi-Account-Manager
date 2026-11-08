@@ -2098,19 +2098,41 @@ function renderSessionManagerList() {
   const container = document.getElementById('session-manager-items');
   if (!container) return;
 
-  const searchVal = (document.getElementById('session-search-input')?.value || '').toLowerCase().trim();
+  const searchInputEl = document.getElementById('session-search-input');
+  const searchVal = (searchInputEl?.value || '').toLowerCase().trim();
+  const searchClearBtn = document.getElementById('session-search-clear-btn');
+  if (searchClearBtn) {
+    searchClearBtn.style.display = searchVal ? 'block' : 'none';
+  }
+
+  const idFilterEl = document.getElementById('session-id-filter');
+  const idFilterVal = (idFilterEl?.value || '').trim();
+  const idClearBtn = document.getElementById('session-id-clear-btn');
+  if (idClearBtn) {
+    idClearBtn.style.display = idFilterVal ? 'block' : 'none';
+  }
+
   const statusVal = document.getElementById('session-status-filter')?.value || 'all';
 
   const list = cachedSessionAccounts.filter(acc => {
     const isOnline = !!acc.is_active;
     if (statusVal === 'online' && !isOnline) return false;
     if (statusVal === 'offline' && isOnline) return false;
+
+    // Filter by Telegram ID (prefix atau pencarian ID)
+    if (idFilterVal) {
+      const tgIdStr = String(acc.telegram_id || '');
+      if (!tgIdStr.startsWith(idFilterVal) && !tgIdStr.includes(idFilterVal)) {
+        return false;
+      }
+    }
+
+    // Filter by Nama / Username / Phone
     if (searchVal) {
       const matchName = (acc.display_name || '').toLowerCase().includes(searchVal);
       const matchUsername = (acc.username || '').toLowerCase().includes(searchVal);
       const matchPhone = (acc.phone_number || '').toLowerCase().includes(searchVal);
-      const matchTgId = String(acc.telegram_id || '').includes(searchVal);
-      if (!matchName && !matchUsername && !matchPhone && !matchTgId) return false;
+      if (!matchName && !matchUsername && !matchPhone) return false;
     }
     return true;
   });
@@ -2126,7 +2148,7 @@ function renderSessionManagerList() {
     const name = escapeHtml(acc.display_name || (acc.username ? '@' + acc.username : '') || acc.phone_number || ('Akun #' + acc.id));
     const phone = escapeHtml(acc.phone_number || '-');
     const username = acc.username ? `<span style="color: var(--accent-cyan); font-size: 0.76rem;">@${escapeHtml(acc.username)}</span>` : '';
-    const tgId = acc.telegram_id ? `<span>TG ID: ${acc.telegram_id}</span>` : '';
+    const tgId = acc.telegram_id ? `<span class="account-id-badge" onclick="filterSessionByTelegramId('${acc.telegram_id}')" style="cursor: pointer; padding: 2px 7px; border-radius: 6px; font-size: 0.74rem; background: rgba(0, 212, 255, 0.08); border: 1px solid rgba(0, 212, 255, 0.25); color: var(--accent-cyan); font-family: 'JetBrains Mono', monospace;" title="Klik untuk filter awalan ID ${acc.telegram_id}">TG: ${acc.telegram_id} 🔍</span>` : '';
     const statusBadge = isOnline 
       ? '<span style="display:inline-block; padding: 2px 8px; border-radius: 12px; font-size: 0.72rem; font-weight: 600; background: rgba(16,185,129,0.15); color: var(--accent-green); border: 1px solid rgba(16,185,129,0.3);">● Online</span>'
       : '<span style="display:inline-block; padding: 2px 8px; border-radius: 12px; font-size: 0.72rem; font-weight: 600; background: rgba(239,68,68,0.12); color: var(--accent-rose); border: 1px solid rgba(239,68,68,0.25);">○ Offline</span>';
@@ -2181,8 +2203,20 @@ function renderSessionManagerList() {
   });
 }
 
+window.filterSessionByTelegramId = function(tgId) {
+  const idInput = document.getElementById('session-id-filter');
+  if (idInput) {
+    idInput.value = tgId;
+    renderSessionManagerList();
+    idInput.focus();
+  }
+};
+
 function initSessionManagerView() {
   const searchInput = document.getElementById('session-search-input');
+  const searchClearBtn = document.getElementById('session-search-clear-btn');
+  const idFilter = document.getElementById('session-id-filter');
+  const idClearBtn = document.getElementById('session-id-clear-btn');
   const statusFilter = document.getElementById('session-status-filter');
   const reloadBtn = document.getElementById('session-reload-btn');
   const selectAllBtn = document.getElementById('session-select-all');
@@ -2192,23 +2226,42 @@ function initSessionManagerView() {
   const bulkLogoutBtn = document.getElementById('session-bulk-logout-btn');
 
   if (searchInput) searchInput.addEventListener('input', renderSessionManagerList);
+  if (searchClearBtn) {
+    searchClearBtn.addEventListener('click', () => {
+      if (searchInput) searchInput.value = '';
+      renderSessionManagerList();
+    });
+  }
+
+  if (idFilter) idFilter.addEventListener('input', renderSessionManagerList);
+  if (idClearBtn) {
+    idClearBtn.addEventListener('click', () => {
+      if (idFilter) idFilter.value = '';
+      renderSessionManagerList();
+    });
+  }
+
   if (statusFilter) statusFilter.addEventListener('change', renderSessionManagerList);
   if (reloadBtn) reloadBtn.addEventListener('click', loadSessionManagerAccounts);
 
   if (selectAllBtn) {
     selectAllBtn.addEventListener('click', () => {
       const searchVal = (document.getElementById('session-search-input')?.value || '').toLowerCase().trim();
+      const idFilterVal = (document.getElementById('session-id-filter')?.value || '').trim();
       const statusVal = document.getElementById('session-status-filter')?.value || 'all';
       cachedSessionAccounts.forEach(acc => {
         const isOnline = !!acc.is_active;
         if (statusVal === 'online' && !isOnline) return;
         if (statusVal === 'offline' && isOnline) return;
+        if (idFilterVal) {
+          const tgIdStr = String(acc.telegram_id || '');
+          if (!tgIdStr.startsWith(idFilterVal) && !tgIdStr.includes(idFilterVal)) return;
+        }
         if (searchVal) {
           const matchName = (acc.display_name || '').toLowerCase().includes(searchVal);
           const matchUsername = (acc.username || '').toLowerCase().includes(searchVal);
           const matchPhone = (acc.phone_number || '').toLowerCase().includes(searchVal);
-          const matchTgId = String(acc.telegram_id || '').includes(searchVal);
-          if (!matchName && !matchUsername && !matchPhone && !matchTgId) return;
+          if (!matchName && !matchUsername && !matchPhone) return;
         }
         selectedSessionAccountIds.add(acc.id);
       });
