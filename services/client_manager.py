@@ -482,13 +482,13 @@ class ClientManager:
             await TelegramAccountModel.update_status(account_id, True)
             return {"status": "success", "message": "Account connected successfully", "is_active": True}
         except Exception as e:
+            if 'client' in locals() and client:
+                try:
+                    await client.disconnect()
+                except Exception:
+                    pass
             if is_session_dead_or_revoked(e):
-                cl = self._active_clients.pop(account_id, None)
-                if cl and cl.is_connected():
-                    try:
-                        await cl.disconnect()
-                    except Exception:
-                        pass
+                self._active_clients.pop(account_id, None)
                 await TelegramAccountModel.delete(account_id, user_id)
                 return {
                     "status": "error",
@@ -693,6 +693,12 @@ class ClientManager:
                 except Exception as e:
                     # Connection error, timeout, or temporary network glitch
                     is_valid = False
+                finally:
+                    if not is_valid and client:
+                        try:
+                            await client.disconnect()
+                        except Exception:
+                            pass
 
                 if not is_valid:
                     # Update status to offline in database, DO NOT DELETE
@@ -782,14 +788,16 @@ class ClientManager:
                     else:
                         # Temporary network error or timeout - do not delete, just update offline
                         await TelegramAccountModel.update_status(acc_id, False)
+                finally:
+                    if is_dead or acc_id not in self._active_clients:
+                        if client:
+                            try:
+                                await client.disconnect()
+                            except Exception:
+                                pass
 
                 if is_dead:
-                    cl = self._active_clients.pop(acc_id, None)
-                    if cl and cl.is_connected():
-                        try:
-                            await cl.disconnect()
-                        except Exception:
-                            pass
+                    self._active_clients.pop(acc_id, None)
                     await TelegramAccountModel.delete(acc_id, user_id)
                     deleted_accounts.append({
                         "id": acc_id,
