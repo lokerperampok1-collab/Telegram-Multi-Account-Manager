@@ -161,21 +161,9 @@ function renderAccounts(accounts) {
             ` : `<span>-</span>`}
           </div>
           <div class="detail-row">
-            <span>Telegram ID</span>
-            <span class="tg-id-clickable" onclick="filterByTelegramId('${acc.telegram_id}')" title="Klik untuk filter awalan ID ini" style="color: var(--accent-cyan); font-weight: 600; cursor: pointer; font-family: 'JetBrains Mono', monospace;">
-              ${acc.telegram_id || '-'} 🔍
-            </span>
-          </div>
-          <div class="detail-row">
             <span>Status Sesi</span>
             <span style="color: ${isOnline ? 'var(--accent-green)' : 'var(--text-muted)'};">
               ${isOnline ? '● Terhubung' : '○ Offline'}
-            </span>
-          </div>
-          <div class="detail-row">
-            <span>SpamBot</span>
-            <span id="health-badge-${acc.id}" style="color: var(--accent-cyan); cursor: pointer; font-weight: 500;" onclick="checkAccountHealth(${acc.id})" title="Klik untuk cek @SpamBot">
-              🔍 Cek Status
             </span>
           </div>
           <div class="detail-row">
@@ -185,9 +173,9 @@ function renderAccounts(accounts) {
             </span>
           </div>
           <div class="detail-row">
-            <span>Perangkat</span>
-            <span style="color: var(--accent-cyan); cursor: pointer; font-weight: 500;" onclick="openDevicesModal(${acc.id}, '${escapeHtml(acc.display_name || 'Akun #' + acc.id)}', '${escapeHtml(acc.phone_number || '-')}')" title="Cek daftar perangkat tersambung">
-              📱 Cek Sesi
+            <span>SpamBot</span>
+            <span id="health-badge-${acc.id}" style="color: var(--accent-cyan); cursor: pointer; font-weight: 500;" onclick="checkAccountHealth(${acc.id})" title="Klik untuk cek @SpamBot">
+              🔍 Cek Status
             </span>
           </div>
         </div>
@@ -196,28 +184,19 @@ function renderAccounts(accounts) {
           <button class="btn btn-secondary btn-sm otp-action-btn" onclick="openOtpModal(${acc.id}, '${escapeHtml(acc.display_name || 'Akun #' + acc.id)}', '${escapeHtml(acc.phone_number || '-')}')" title="Ambil kode masuk / OTP Telegram">
             🔑 Ambil OTP
           </button>
-          <button class="btn btn-secondary btn-sm" onclick="openDevicesModal(${acc.id}, '${escapeHtml(acc.display_name || 'Akun #' + acc.id)}', '${escapeHtml(acc.phone_number || '-')}')" title="Cek Perangkat / Sesi yang Tersambung">
-            📱
-          </button>
-          <button class="btn btn-secondary btn-sm" onclick="checkAccountHealth(${acc.id})" title="Cek status @SpamBot">
-            🛡️
-          </button>
-          <button class="btn btn-secondary btn-sm" onclick="checkAccount2FA(${acc.id})" title="Cek status 2FA (Cloud Password)">
-            🔒
-          </button>
-          <button class="btn btn-secondary btn-sm" onclick="openSingleProfileModal(${acc.id}, '${escapeHtml(acc.display_name || '')}')" title="Ubah Nama & Foto Profil Akun Ini">
-            👤
+          <button class="btn btn-secondary btn-sm" onclick="openSingleProfileModal(${acc.id}, '${escapeHtml(acc.display_name || '')}')" title="Ubah Nama & Foto Profil Akun Ini" style="padding: 6px 10px; font-size: 0.8rem;">
+            👤 Profil
           </button>
           ${isOnline ? `
-            <button class="btn btn-secondary btn-sm" onclick="disconnectAccount(${acc.id})">
+            <button class="btn btn-secondary btn-sm" onclick="disconnectAccount(${acc.id})" title="Putuskan koneksi akun sementara" style="padding: 6px 10px; font-size: 0.8rem;">
               Putuskan
             </button>
           ` : `
-            <button class="btn btn-primary btn-sm" onclick="connectAccount(${acc.id})">
+            <button class="btn btn-primary btn-sm" onclick="connectAccount(${acc.id})" title="Hubungkan kembali akun ini" style="padding: 6px 10px; font-size: 0.8rem;">
               Hubungkan
             </button>
           `}
-          <button class="btn btn-danger btn-sm" onclick="deleteAccount(${acc.id}, '${escapeHtml(acc.display_name || acc.phone_number || '')}')" title="Hapus Akun">
+          <button class="btn btn-danger btn-sm" onclick="deleteAccount(${acc.id}, '${escapeHtml(acc.display_name || acc.phone_number || '')}')" title="Hapus Akun dari Dashboard" style="padding: 6px 9px;">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <polyline points="3 6 5 6 21 6"></polyline>
               <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
