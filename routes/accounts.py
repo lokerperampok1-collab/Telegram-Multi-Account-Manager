@@ -22,6 +22,13 @@ class ImportSessionsRequest(BaseModel):
 class Check2FARequest(BaseModel):
     password: Optional[str] = None
 
+class LogoutBulkRequest(BaseModel):
+    account_ids: List[int]
+    delete_from_db: bool = False
+
+class TerminateOtherBulkRequest(BaseModel):
+    account_ids: List[int]
+
 # ----------------- Account CRUD -----------------
 
 @router.get("")
@@ -119,6 +126,34 @@ async def terminate_account_device(account_id: int, auth_hash: int, current_user
     if res.get("status") == "error":
         raise HTTPException(status_code=400, detail=res.get("message", "Gagal memutuskan sesi perangkat"))
     return res
+
+@router.post("/{account_id}/devices/terminate-other")
+async def terminate_other_devices(account_id: int, current_user: dict = Depends(get_current_user)):
+    """Terminates all other authorizations/sessions of an account except current bot session."""
+    res = await client_manager.terminate_all_other_authorizations(account_id, current_user["id"])
+    if res.get("status") == "error":
+        raise HTTPException(status_code=400, detail=res.get("message"))
+    return res
+
+@router.post("/devices/terminate-other-bulk")
+async def terminate_other_devices_bulk(req: TerminateOtherBulkRequest, current_user: dict = Depends(get_current_user)):
+    """Terminates all other authorizations across multiple accounts in bulk."""
+    results = await client_manager.terminate_other_devices_bulk(current_user["id"], req.account_ids)
+    return {"status": "success", "results": results}
+
+@router.post("/{account_id}/logout")
+async def logout_single_account(account_id: int, delete_from_db: bool = Query(False), current_user: dict = Depends(get_current_user)):
+    """Logs out an account from Telegram permanently (revoking auth key)."""
+    res = await client_manager.logout_account(account_id, current_user["id"], delete_from_db=delete_from_db)
+    if res.get("status") == "error":
+        raise HTTPException(status_code=400, detail=res.get("message"))
+    return res
+
+@router.post("/logout-bulk")
+async def logout_bulk(req: LogoutBulkRequest, current_user: dict = Depends(get_current_user)):
+    """Logs out multiple accounts from Telegram in bulk."""
+    results = await client_manager.logout_bulk_accounts(current_user["id"], req.account_ids, delete_from_db=req.delete_from_db)
+    return {"status": "success", "results": results}
 
 # ----------------- Health & SpamBot Check -----------------
 

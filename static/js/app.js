@@ -127,6 +127,8 @@ document.addEventListener('DOMContentLoaded', () => {
           if (radioSel && radioSel.checked && window.populateProfileChecklist) {
             window.populateProfileChecklist();
           }
+        } else if (targetViewId === 'view-session-manager') {
+          if (window.loadSessionManagerAccounts) window.loadSessionManagerAccounts();
         }
 
         // Scroll smoothly to top

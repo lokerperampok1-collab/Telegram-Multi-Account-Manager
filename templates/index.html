@@ -149,6 +149,14 @@
           </svg>
           <span class="nav-text">Ganti 2FA (0707 / 26)</span>
         </button>
+        <button class="nav-item" data-view="view-session-manager" id="nav-btn-session-manager">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+            <polyline points="16 17 21 12 16 7"></polyline>
+            <line x1="21" y1="12" x2="9" y2="12"></line>
+          </svg>
+          <span class="nav-text">Kelola Sesi & Logout</span>
+        </button>
         <button class="nav-item" id="sidebar-export-json-btn">
           <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
@@ -1134,6 +1142,79 @@ Halo semuanya, selamat beraktivitas ya</textarea>
             </div>
           </div>
         </div>
+
+        <!-- VIEW 11: KELOLA SESI & LOGOUT -->
+        <div class="view-panel" id="view-session-manager">
+          <div class="tool-card-lux glass-panel">
+            <div class="tool-header-lux">
+              <div class="tool-icon-circle" style="background: linear-gradient(135deg, var(--accent-rose), var(--accent-purple));">🚪</div>
+              <div>
+                <h3 class="tool-title">Kelola Sesi & Logout (Revoke Sesi Telegram)</h3>
+                <p class="tool-subtitle">Cek sesi aktif, putuskan perangkat lain selain bot, atau logout permanen sesi bot dari Telegram</p>
+              </div>
+            </div>
+
+            <div class="tool-body-lux">
+              <!-- Security Warning Banner -->
+              <div style="background: rgba(239, 68, 68, 0.08); border: 1px solid rgba(239, 68, 68, 0.35); border-radius: var(--radius-sm); padding: 12px 16px; margin-bottom: 16px;">
+                <div style="font-weight: 700; color: var(--accent-rose); font-size: 0.88rem; margin-bottom: 6px; display: flex; align-items: center; gap: 8px;">
+                  <span>⚠️</span>
+                  <span>Petunjuk Penting Pengelolaan Sesi:</span>
+                </div>
+                <div style="font-size: 0.8rem; color: var(--text-secondary); line-height: 1.5;">
+                  • <strong>⚡ Putuskan Sesi Lain</strong>: Mengeluarkan semua sesi perangkat lain (HP orang lain / bot penjual) dan hanya menyisakan sesi bot di dashboard ini. <em>(Catatan: Jika sesi baru login &lt; 24 jam, Telegram memberlakukan cooldown 24 jam)</em>.<br>
+                  • <strong>🚪 Logout Bot Ini</strong>: Menghanguskan kunci sesi bot ini secara resmi dan permanen dari server Telegram. <strong>HANYA gunakan tombol ini jika akun Anda SUDAH login di aplikasi HP/Nicegram Anda!</strong>
+                </div>
+              </div>
+
+              <!-- Filter & Search Toolbar -->
+              <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 14px; padding: 12px; background: rgba(0,0,0,0.25); border-radius: var(--radius-sm); border: 1px solid var(--border-color);">
+                <input type="text" id="session-search-input" placeholder="Cari nama, nomor HP, TG ID..." class="form-input" style="flex: 1; min-width: 180px; padding: 6px 12px; font-size: 0.82rem;">
+                
+                <select id="session-status-filter" class="filter-select" style="padding: 6px 10px; font-size: 0.82rem;">
+                  <option value="all">Semua Akun</option>
+                  <option value="online">Hanya Online</option>
+                  <option value="offline">Hanya Offline</option>
+                </select>
+
+                <button type="button" class="btn btn-secondary btn-sm" id="session-reload-btn" title="Muat ulang daftar akun">
+                  🔄 Segarkan
+                </button>
+              </div>
+
+              <!-- Bulk Action Bar -->
+              <div style="display: flex; gap: 8px; align-items: center; justify-content: space-between; flex-wrap: wrap; margin-bottom: 12px; padding: 10px 14px; background: rgba(255,255,255,0.02); border-radius: var(--radius-sm); border: 1px solid var(--border-color);">
+                <div style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap;">
+                  <button type="button" class="btn-pill" id="session-select-all">Pilih Semua</button>
+                  <button type="button" class="btn-pill" id="session-select-none">Batal</button>
+                  <button type="button" class="btn-pill" id="session-select-online">Online Saja</button>
+                  <span id="session-selected-count" style="font-size: 0.78rem; font-weight: 700; color: var(--accent-cyan); margin-left: 6px;">0 akun dipilih</span>
+                </div>
+
+                <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                  <label style="display: flex; align-items: center; gap: 6px; font-size: 0.78rem; color: var(--text-muted); cursor: pointer;" title="Centang jika ingin akun langsung dihapus dari tampilan dashboard setelah sukses di-logout">
+                    <input type="checkbox" id="session-delete-from-db-chk">
+                    <span>Hapus dari dashboard juga</span>
+                  </label>
+                  <button type="button" class="btn btn-secondary btn-sm" id="session-bulk-terminate-other-btn" style="padding: 6px 12px; font-weight: 600; color: var(--accent-amber);">
+                    ⚡ Putuskan Sesi Lain Terpilih
+                  </button>
+                  <button type="button" class="btn btn-danger btn-sm" id="session-bulk-logout-btn" style="padding: 6px 12px; font-weight: 600;">
+                    🚪 Logout Bot Terpilih
+                  </button>
+                </div>
+              </div>
+
+              <!-- Account List Items -->
+              <div id="session-manager-items" style="display: flex; flex-direction: column; gap: 8px; max-height: 480px; overflow-y: auto; padding-right: 4px;">
+                <div style="text-align: center; padding: 20px; color: var(--text-muted);">Memuat daftar akun...</div>
+              </div>
+
+              <!-- Bulk Results Box -->
+              <div id="session-manager-results" class="bulk-status-box" style="display: none; margin-top: 16px;"></div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -1262,14 +1343,19 @@ Halo semuanya, selamat beraktivitas ya</textarea>
       </div>
 
       <div class="modal-body">
-        <div class="devices-top-bar">
+        <div class="devices-top-bar" style="display: flex; gap: 8px; align-items: center; justify-content: space-between; flex-wrap: wrap;">
           <div class="devices-count-pill" id="devices-count-badge">Memuat...</div>
-          <button class="btn btn-secondary btn-sm" id="devices-refresh-btn" title="Muat ulang daftar sesi perangkat">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path>
-            </svg>
-            <span>Segarkan</span>
-          </button>
+          <div style="display: flex; gap: 8px; margin-left: auto;">
+            <button class="btn btn-danger btn-sm" id="devices-terminate-all-btn" title="Putuskan semua sesi perangkat lain kecuali sesi bot ini">
+              ⚡ Putuskan Sesi Lain
+            </button>
+            <button class="btn btn-secondary btn-sm" id="devices-refresh-btn" title="Muat ulang daftar sesi perangkat">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path>
+              </svg>
+              <span>Segarkan</span>
+            </button>
+          </div>
         </div>
 
         <div class="devices-list" id="devices-list">

@@ -48,7 +48,8 @@ from telethon.errors import (
     FloodWaitError,
     ChatWriteForbiddenError,
     UserBannedInChannelError,
-    SlowModeWaitError
+    SlowModeWaitError,
+    FreshResetAuthorisationForbiddenError
 )
 
 from config import settings
@@ -762,6 +763,142 @@ class ClientManager:
             return {"status": "error", "message": f"Terkena FloodWait Telegram, tunggu {e.seconds} detik."}
         except Exception as e:
             return {"status": "error", "message": f"Gagal memutuskan sesi perangkat: {str(e)}"}
+
+    async def terminate_all_other_authorizations(self, account_id: int, user_id: int) -> dict:
+        """Terminates all other authorizations/sessions of an account except the current bot session."""
+        account = await TelegramAccountModel.get_by_id(account_id, user_id)
+        if not account:
+            return {"status": "error", "message": "Akun tidak ditemukan"}
+
+        client = self._active_clients.get(account_id)
+        if not client or not client.is_connected():
+            connect_res = await self.connect_account(account_id, user_id)
+            if connect_res.get("status") != "success":
+                return {
+                    "status": "error",
+                    "message": f"Gagal menghubungkan sesi akun: {connect_res.get('message')}"
+                }
+            client = self._active_clients.get(account_id)
+
+        try:
+            if not await client.is_user_authorized():
+                await TelegramAccountModel.update_status(account_id, False)
+                return {"status": "error", "message": "Sesi tidak terotorisasi atau sudah kedaluwarsa"}
+
+            from telethon.tl.functions.auth import ResetAuthorizationsRequest
+            await client(ResetAuthorizationsRequest())
+            return {
+                "status": "success",
+                "message": "Seluruh sesi perangkat lain berhasil diputuskan! Hanya sesi bot ini yang tersisa."
+            }
+        except FreshResetAuthorisationForbiddenError:
+            return {
+                "status": "error",
+                "message": "Telegram menolak karena sesi bot ini masih baru (< 24 jam). Telegram mewajibkan waktu tunggu 24 jam sebelum diizinkan mematikan sesi lain. Silakan coba lagi setelah 24 jam atau lakukan terminate dari aplikasi HP Anda."
+            }
+        except FloodWaitError as e:
+            return {"status": "error", "message": f"Terkena FloodWait Telegram, tunggu {e.seconds} detik."}
+        except Exception as e:
+            return {"status": "error", "message": f"Gagal memutuskan sesi lain: {str(e)}"}
+
+    async def terminate_other_devices_bulk(self, user_id: int, account_ids: list[int]) -> list[dict]:
+        """Performs bulk termination of other authorizations across multiple accounts."""
+        op_id = f"term_other_{uuid.uuid4().hex[:8]}"
+        self._start_operation(op_id, "Putuskan Sesi Lain Massal")
+        results = []
+        try:
+            all_accounts = await TelegramAccountModel.list_by_user(user_id)
+            acc_map = {acc["id"]: acc for acc in all_accounts}
+            for idx, acc_id in enumerate(account_ids):
+                if self._is_cancelled(op_id):
+                    results.append({"account_id": acc_id, "name": "—", "status": "cancelled", "message": "Proses dibatalkan"})
+                    break
+                acc = acc_map.get(acc_id, {})
+                acc_name = acc.get("display_name") or acc.get("phone_number") or f"Akun #{acc_id}"
+                res = await self.terminate_all_other_authorizations(acc_id, user_id)
+                results.append({
+                    "account_id": acc_id,
+                    "name": acc_name,
+                    "phone": acc.get("phone_number"),
+                    "status": res.get("status"),
+                    "message": res.get("message")
+                })
+                if idx < len(account_ids) - 1:
+                    await self._interruptible_sleep(1, op_id)
+        finally:
+            self._finish_operation(op_id)
+        return results
+
+    async def logout_account(self, account_id: int, user_id: int, delete_from_db: bool = False) -> dict:
+        """
+        Officially logs out from Telegram, permanently revoking the session AuthKey on Telegram servers.
+        Optionally deletes the record from database or marks it offline.
+        """
+        account = await TelegramAccountModel.get_by_id(account_id, user_id)
+        if not account:
+            return {"status": "error", "message": "Akun tidak ditemukan"}
+
+        client = self._active_clients.get(account_id)
+        if not client or not client.is_connected():
+            connect_res = await self.connect_account(account_id, user_id)
+            if connect_res.get("status") != "success":
+                if delete_from_db:
+                    await TelegramAccountModel.delete(account_id, user_id)
+                else:
+                    await TelegramAccountModel.update_status(account_id, False)
+                return {
+                    "status": "success",
+                    "message": "Sesi akun sudah mati/tidak aktif dan telah dibersihkan."
+                }
+            client = self._active_clients.get(account_id)
+
+        try:
+            await client.log_out()
+        except Exception:
+            try:
+                await client.disconnect()
+            except Exception:
+                pass
+        finally:
+            self._active_clients.pop(account_id, None)
+
+        if delete_from_db:
+            await TelegramAccountModel.delete(account_id, user_id)
+        else:
+            await TelegramAccountModel.update_status(account_id, False)
+
+        return {
+            "status": "success",
+            "message": "Sesi akun berhasil di-logout secara permanen dari server Telegram. AuthKey sesi telah mati total."
+        }
+
+    async def logout_bulk_accounts(self, user_id: int, account_ids: list[int], delete_from_db: bool = False) -> list[dict]:
+        """Performs bulk logout across multiple accounts."""
+        op_id = f"logout_{uuid.uuid4().hex[:8]}"
+        self._start_operation(op_id, "Logout Massal Akun")
+        results = []
+        try:
+            all_accounts = await TelegramAccountModel.list_by_user(user_id)
+            acc_map = {acc["id"]: acc for acc in all_accounts}
+            for idx, acc_id in enumerate(account_ids):
+                if self._is_cancelled(op_id):
+                    results.append({"account_id": acc_id, "name": "—", "status": "cancelled", "message": "Proses dibatalkan"})
+                    break
+                acc = acc_map.get(acc_id, {})
+                acc_name = acc.get("display_name") or acc.get("phone_number") or f"Akun #{acc_id}"
+                res = await self.logout_account(acc_id, user_id, delete_from_db=delete_from_db)
+                results.append({
+                    "account_id": acc_id,
+                    "name": acc_name,
+                    "phone": acc.get("phone_number"),
+                    "status": res.get("status"),
+                    "message": res.get("message")
+                })
+                if idx < len(account_ids) - 1:
+                    await self._interruptible_sleep(1, op_id)
+        finally:
+            self._finish_operation(op_id)
+        return results
 
     # ------------------ Group Join Methods ------------------
 

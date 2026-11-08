@@ -1317,6 +1317,18 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  const devicesTermAllBtn = document.getElementById('devices-terminate-all-btn');
+  if (devicesTermAllBtn) {
+    devicesTermAllBtn.addEventListener('click', () => {
+      if (currentDevicesAccountId) {
+        const accName = document.getElementById('devices-modal-account-title')?.textContent || ('Akun #' + currentDevicesAccountId);
+        terminateOtherSessionsForAccount(currentDevicesAccountId, accName);
+      }
+    });
+  }
+
+  initSessionManagerView();
+
   loadAccounts();
 });
 
@@ -1800,6 +1812,66 @@ async function terminateDeviceSession(accountId, authHash, deviceName) {
   }
 }
 
+async function terminateOtherSessionsForAccount(accountId, accountName) {
+  if (!confirm(`⚠️ Konfirmasi Putuskan Sesi Lain:\n\nApakah Anda yakin ingin MEMUTUSKAN SEMUA sesi perangkat lain pada akun "${accountName || accountId}"?\n\nHanya sesi bot di dashboard ini yang akan tersisa.`)) {
+    return;
+  }
+
+  showToast('Memutuskan seluruh sesi perangkat lain...', 'info');
+  try {
+    const res = await fetch(`/api/accounts/${accountId}/devices/terminate-other`, {
+      method: 'POST',
+      headers: getAuthHeaders()
+    });
+    const data = await res.json();
+    if (res.ok && data.status === 'success') {
+      showToast(data.message || 'Sesi perangkat lain berhasil diputuskan!', 'success');
+      if (currentDevicesAccountId === accountId) {
+        loadAccountDevices(accountId);
+      }
+      if (window.loadSessionManagerAccounts) loadSessionManagerAccounts();
+    } else {
+      showToast(data.detail || data.message || 'Gagal memutuskan sesi lain', 'error');
+    }
+  } catch (e) {
+    showToast('Koneksi server gagal', 'error');
+  }
+}
+window.terminateOtherSessionsForAccount = terminateOtherSessionsForAccount;
+
+async function logoutAccountSingle(accountId, accountName) {
+  const proceed = confirm(
+    `🚪 KONFIRMASI LOGOUT PERMANEN:\n\n` +
+    `Apakah Anda yakin ingin me-LOGOUT akun "${accountName || accountId}" dari server Telegram?\n\n` +
+    `⚠️ PERHATIAN:\n` +
+    `• Kunci otorisasi (AuthKey) sesi bot ini akan MATI TOTAL secara permanen di Telegram.\n` +
+    `• Pastikan Anda SUDAH login di aplikasi HP/Nicegram!\n\n` +
+    `Klik [OK] untuk lanjut, atau [Cancel] untuk membatalkan.`
+  );
+  if (!proceed) return;
+
+  const removeDb = confirm(`Hapus akun ini dari tampilan dashboard juga setelah logout berhasil?\n\n[OK] = Logout & Hapus dari dashboard\n[Cancel] = Logout saja (status jadi offline)`);
+
+  showToast('Me-logout sesi dari server Telegram...', 'info');
+  try {
+    const res = await fetch(`/api/accounts/${accountId}/logout?delete_from_db=${removeDb}`, {
+      method: 'POST',
+      headers: getAuthHeaders()
+    });
+    const data = await res.json();
+    if (res.ok && data.status === 'success') {
+      showToast(data.message || 'Akun berhasil di-logout secara permanen!', 'success');
+      loadAccounts();
+      if (window.loadSessionManagerAccounts) loadSessionManagerAccounts();
+    } else {
+      showToast(data.detail || data.message || 'Gagal logout akun', 'error');
+    }
+  } catch (e) {
+    showToast('Koneksi server gagal', 'error');
+  }
+}
+window.logoutAccountSingle = logoutAccountSingle;
+
 // ==================== SINGLE PROFILE MODAL CONTROLLER ====================
 function openSingleProfileModal(accountId, currentName) {
   const modal = document.getElementById('single-profile-modal');
@@ -1929,6 +2001,281 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 });
+
+// ==================== SESSION MANAGER VIEW CONTROLLER ====================
+let cachedSessionAccounts = [];
+let selectedSessionAccountIds = new Set();
+
+function updateSessionSelectionCounter() {
+  const cntEl = document.getElementById('session-selected-count');
+  if (cntEl) {
+    cntEl.textContent = `${selectedSessionAccountIds.size} akun dipilih`;
+  }
+}
+
+async function loadSessionManagerAccounts() {
+  const container = document.getElementById('session-manager-items');
+  if (!container) return;
+
+  container.innerHTML = '<div style="text-align: center; padding: 24px; color: var(--text-muted);"><div class="spinner" style="width:16px;height:16px;display:inline-block;margin-right:8px;"></div>Memuat daftar akun...</div>';
+
+  try {
+    const res = await fetch('/api/accounts', { credentials: 'omit', headers: getAuthHeaders() });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    cachedSessionAccounts = Array.isArray(data) ? data : (data.accounts || []);
+    const validIds = new Set(cachedSessionAccounts.map(a => a.id));
+    selectedSessionAccountIds = new Set([...selectedSessionAccountIds].filter(id => validIds.has(id)));
+    updateSessionSelectionCounter();
+    renderSessionManagerList();
+  } catch (err) {
+    container.innerHTML = `<div style="text-align: center; padding: 20px; color: var(--accent-rose);">⚠️ Gagal memuat daftar akun: ${escapeHtml(err.message)}</div>`;
+  }
+}
+window.loadSessionManagerAccounts = loadSessionManagerAccounts;
+
+function renderSessionManagerList() {
+  const container = document.getElementById('session-manager-items');
+  if (!container) return;
+
+  const searchVal = (document.getElementById('session-search-input')?.value || '').toLowerCase().trim();
+  const statusVal = document.getElementById('session-status-filter')?.value || 'all';
+
+  const list = cachedSessionAccounts.filter(acc => {
+    if (statusVal === 'online' && !acc.is_connected) return false;
+    if (statusVal === 'offline' && acc.is_connected) return false;
+    if (searchVal) {
+      const matchName = (acc.first_name || '').toLowerCase().includes(searchVal) || (acc.last_name || '').toLowerCase().includes(searchVal);
+      const matchPhone = (acc.phone || '').toLowerCase().includes(searchVal);
+      const matchTgId = String(acc.telegram_id || '').includes(searchVal);
+      if (!matchName && !matchPhone && !matchTgId) return false;
+    }
+    return true;
+  });
+
+  if (list.length === 0) {
+    container.innerHTML = '<div style="text-align: center; padding: 30px; color: var(--text-muted);">Tidak ada akun yang cocok dengan filter.</div>';
+    return;
+  }
+
+  container.innerHTML = list.map(acc => {
+    const isSelected = selectedSessionAccountIds.has(acc.id);
+    const isOnline = !!acc.is_connected;
+    const name = escapeHtml([acc.first_name, acc.last_name].filter(Boolean).join(' ') || 'Tanpa Nama');
+    const phone = escapeHtml(acc.phone || '-');
+    const statusBadge = isOnline 
+      ? '<span style="display:inline-block; padding: 2px 8px; border-radius: 12px; font-size: 0.72rem; font-weight: 600; background: rgba(16,185,129,0.15); color: var(--accent-green); border: 1px solid rgba(16,185,129,0.3);">● Online</span>'
+      : '<span style="display:inline-block; padding: 2px 8px; border-radius: 12px; font-size: 0.72rem; font-weight: 600; background: rgba(239,68,68,0.12); color: var(--accent-rose); border: 1px solid rgba(239,68,68,0.25);">○ Offline</span>';
+
+    return `
+      <div class="session-item-row" style="display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: var(--radius-sm); transition: background 0.15s;">
+        <div style="display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1;">
+          <input type="checkbox" class="session-acc-chk" data-id="${acc.id}" ${isSelected ? 'checked' : ''} style="cursor: pointer; width: 16px; height: 16px; accent-color: var(--accent-cyan);">
+          <div style="width: 34px; height: 34px; border-radius: 50%; background: linear-gradient(135deg, rgba(6,182,212,0.2), rgba(168,85,247,0.2)); display: flex; align-items: center; justify-content: center; font-weight: 700; color: var(--accent-cyan); font-size: 0.85rem; flex-shrink: 0;">
+            ${(name.charAt(0) || 'A').toUpperCase()}
+          </div>
+          <div style="min-width: 0;">
+            <div style="font-weight: 600; font-size: 0.86rem; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+              ${name}
+            </div>
+            <div style="font-size: 0.75rem; color: var(--text-muted); display: flex; gap: 8px; align-items: center;">
+              <span>${phone}</span>
+              ${acc.telegram_id ? `<span>ID: ${acc.telegram_id}</span>` : ''}
+              ${statusBadge}
+            </div>
+          </div>
+        </div>
+
+        <div style="display: flex; align-items: center; gap: 6px; flex-shrink: 0;">
+          <button type="button" class="btn btn-secondary btn-sm" onclick="openDevicesModal(${acc.id}, '${name.replace(/'/g, "\\'")}', '${phone}')" style="padding: 4px 9px; font-size: 0.75rem;" title="Lihat semua perangkat aktif akun ini">
+            📱 Cek Sesi
+          </button>
+          <button type="button" class="btn btn-secondary btn-sm" onclick="terminateOtherSessionsForAccount(${acc.id}, '${name.replace(/'/g, "\\'")}')" style="padding: 4px 9px; font-size: 0.75rem; color: var(--accent-amber);" title="Putuskan semua sesi perangkat lain selain bot ini" ${!isOnline ? 'disabled style="opacity:0.5; cursor:not-allowed;"' : ''}>
+            ⚡ Putuskan Sesi Lain
+          </button>
+          <button type="button" class="btn btn-danger btn-sm" onclick="logoutAccountSingle(${acc.id}, '${name.replace(/'/g, "\\'")}')" style="padding: 4px 9px; font-size: 0.75rem;" title="Logout sesi bot ini secara permanen dari server Telegram">
+            🚪 Logout Bot
+          </button>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  container.querySelectorAll('.session-acc-chk').forEach(chk => {
+    chk.addEventListener('change', (e) => {
+      const id = parseInt(e.target.dataset.id, 10);
+      if (e.target.checked) {
+        selectedSessionAccountIds.add(id);
+      } else {
+        selectedSessionAccountIds.delete(id);
+      }
+      updateSessionSelectionCounter();
+    });
+  });
+}
+
+function initSessionManagerView() {
+  const searchInput = document.getElementById('session-search-input');
+  const statusFilter = document.getElementById('session-status-filter');
+  const reloadBtn = document.getElementById('session-reload-btn');
+  const selectAllBtn = document.getElementById('session-select-all');
+  const selectNoneBtn = document.getElementById('session-select-none');
+  const selectOnlineBtn = document.getElementById('session-select-online');
+  const bulkTermBtn = document.getElementById('session-bulk-terminate-other-btn');
+  const bulkLogoutBtn = document.getElementById('session-bulk-logout-btn');
+
+  if (searchInput) searchInput.addEventListener('input', renderSessionManagerList);
+  if (statusFilter) statusFilter.addEventListener('change', renderSessionManagerList);
+  if (reloadBtn) reloadBtn.addEventListener('click', loadSessionManagerAccounts);
+
+  if (selectAllBtn) {
+    selectAllBtn.addEventListener('click', () => {
+      const searchVal = (document.getElementById('session-search-input')?.value || '').toLowerCase().trim();
+      const statusVal = document.getElementById('session-status-filter')?.value || 'all';
+      cachedSessionAccounts.forEach(acc => {
+        if (statusVal === 'online' && !acc.is_connected) return;
+        if (statusVal === 'offline' && acc.is_connected) return;
+        if (searchVal) {
+          const matchName = (acc.first_name || '').toLowerCase().includes(searchVal) || (acc.last_name || '').toLowerCase().includes(searchVal);
+          const matchPhone = (acc.phone || '').toLowerCase().includes(searchVal);
+          if (!matchName && !matchPhone) return;
+        }
+        selectedSessionAccountIds.add(acc.id);
+      });
+      updateSessionSelectionCounter();
+      renderSessionManagerList();
+    });
+  }
+
+  if (selectNoneBtn) {
+    selectNoneBtn.addEventListener('click', () => {
+      selectedSessionAccountIds.clear();
+      updateSessionSelectionCounter();
+      renderSessionManagerList();
+    });
+  }
+
+  if (selectOnlineBtn) {
+    selectOnlineBtn.addEventListener('click', () => {
+      selectedSessionAccountIds.clear();
+      cachedSessionAccounts.filter(a => a.is_connected).forEach(a => selectedSessionAccountIds.add(a.id));
+      updateSessionSelectionCounter();
+      renderSessionManagerList();
+    });
+  }
+
+  if (bulkTermBtn) {
+    bulkTermBtn.addEventListener('click', async () => {
+      if (selectedSessionAccountIds.size === 0) {
+        showToast('Pilih minimal 1 akun terlebih dahulu', 'warning');
+        return;
+      }
+      const ids = Array.from(selectedSessionAccountIds);
+      if (!confirm(`⚠️ Konfirmasi Putuskan Sesi Lain Massal:\n\nApakah Anda yakin ingin memutuskan seluruh sesi perangkat lain pada ${ids.length} akun yang dipilih?\n\nHanya sesi bot di dashboard ini yang akan tersisa.`)) {
+        return;
+      }
+
+      const resultsBox = document.getElementById('session-manager-results');
+      if (resultsBox) {
+        resultsBox.style.display = 'block';
+        resultsBox.innerHTML = `<div style="display:flex;align-items:center;gap:8px;"><div class="spinner"></div><span>Sedang memutuskan sesi lain untuk ${ids.length} akun...</span></div>`;
+      }
+      bulkTermBtn.disabled = true;
+
+      try {
+        const res = await fetch('/api/accounts/devices/terminate-other-bulk', {
+          method: 'POST',
+          headers: getAuthHeaders(),
+          body: JSON.stringify({ account_ids: ids })
+        });
+        const data = await res.json();
+        if (res.ok && data.status === 'success') {
+          showToast(`Selesai! Sukses: ${data.success_count}, Gagal: ${data.failed_count}`, 'success');
+          if (resultsBox) {
+            resultsBox.innerHTML = `
+              <div style="font-weight:700; color:var(--accent-green); margin-bottom:6px;">✓ Pemutusan Sesi Lain Massal Selesai</div>
+              <div style="font-size:0.8rem; color:var(--text-secondary); margin-bottom:8px;">Total: ${data.total} | Berhasil: ${data.success_count} | Gagal: ${data.failed_count}</div>
+              <div style="max-height:160px; overflow-y:auto; font-size:0.75rem; font-family:monospace; line-height:1.6;">
+                ${(data.results || []).map(r => `<div>${r.status === 'success' ? '✅' : '❌'} Akun #${r.account_id}: ${escapeHtml(r.message || r.status)}</div>`).join('')}
+              </div>
+            `;
+          }
+        } else {
+          showToast(data.detail || data.message || 'Gagal proses massal', 'error');
+          if (resultsBox) resultsBox.style.display = 'none';
+        }
+      } catch (err) {
+        showToast('Koneksi server gagal', 'error');
+        if (resultsBox) resultsBox.style.display = 'none';
+      } finally {
+        bulkTermBtn.disabled = false;
+        loadSessionManagerAccounts();
+      }
+    });
+  }
+
+  if (bulkLogoutBtn) {
+    bulkLogoutBtn.addEventListener('click', async () => {
+      if (selectedSessionAccountIds.size === 0) {
+        showToast('Pilih minimal 1 akun terlebih dahulu', 'warning');
+        return;
+      }
+      const ids = Array.from(selectedSessionAccountIds);
+      const delFromDb = !!document.getElementById('session-delete-from-db-chk')?.checked;
+
+      const proceed = confirm(
+        `🚪 PERINGATAN LOGOUT BOT MASSAL:\n\n` +
+        `Anda akan me-LOGOUT ${ids.length} akun bot ini dari Telegram secara permanen!\n` +
+        `• Kunci otorisasi bot akan MATI TOTAL.\n` +
+        `• Pastikan Anda SUDAH login di HP/Nicegram untuk semua akun ini!\n` +
+        (delFromDb ? `• Akun akan dihapus dari dashboard.\n\n` : `• Akun akan diubah statusnya menjadi offline.\n\n`) +
+        `Lanjutkan logout ${ids.length} akun?`
+      );
+      if (!proceed) return;
+
+      const resultsBox = document.getElementById('session-manager-results');
+      if (resultsBox) {
+        resultsBox.style.display = 'block';
+        resultsBox.innerHTML = `<div style="display:flex;align-items:center;gap:8px;"><div class="spinner"></div><span>Sedang me-logout ${ids.length} akun dari Telegram...</span></div>`;
+      }
+      bulkLogoutBtn.disabled = true;
+
+      try {
+        const res = await fetch('/api/accounts/logout-bulk', {
+          method: 'POST',
+          headers: getAuthHeaders(),
+          body: JSON.stringify({ account_ids: ids, delete_from_db: delFromDb })
+        });
+        const data = await res.json();
+        if (res.ok && data.status === 'success') {
+          showToast(`Logout massal selesai! Sukses: ${data.success_count}, Gagal: ${data.failed_count}`, 'success');
+          if (resultsBox) {
+            resultsBox.innerHTML = `
+              <div style="font-weight:700; color:var(--accent-green); margin-bottom:6px;">✓ Logout Massal Selesai</div>
+              <div style="font-size:0.8rem; color:var(--text-secondary); margin-bottom:8px;">Total: ${data.total} | Berhasil: ${data.success_count} | Gagal: ${data.failed_count}</div>
+              <div style="max-height:160px; overflow-y:auto; font-size:0.75rem; font-family:monospace; line-height:1.6;">
+                ${(data.results || []).map(r => `<div>${r.status === 'success' ? '✅' : '❌'} Akun #${r.account_id}: ${escapeHtml(r.message || r.status)}</div>`).join('')}
+              </div>
+            `;
+          }
+          selectedSessionAccountIds.clear();
+          updateSessionSelectionCounter();
+          loadAccounts();
+          loadSessionManagerAccounts();
+        } else {
+          showToast(data.detail || data.message || 'Gagal logout massal', 'error');
+          if (resultsBox) resultsBox.style.display = 'none';
+        }
+      } catch (err) {
+        showToast('Koneksi server gagal', 'error');
+        if (resultsBox) resultsBox.style.display = 'none';
+      } finally {
+        bulkLogoutBtn.disabled = false;
+      }
+    });
+  }
+}
+
 
 
 
