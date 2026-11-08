@@ -22,6 +22,38 @@ class ImportSessionsRequest(BaseModel):
 class Check2FARequest(BaseModel):
     password: Optional[str] = None
 
+class CheckFilterRequest(BaseModel):
+    account_ids: Optional[List[int]] = None
+    search: Optional[str] = None
+    id_filter: Optional[str] = None
+    status: Optional[str] = None
+    twofa: Optional[str] = None
+    spambot: Optional[str] = None
+
+async def _resolve_account_ids_from_filter(user_id: int, req: Optional[CheckFilterRequest]) -> Optional[List[int]]:
+    if not req:
+        return None
+    if req.account_ids is not None:
+        return req.account_ids
+    if any([
+        req.search and req.search.strip(),
+        req.id_filter and req.id_filter.strip(),
+        req.status and req.status != 'all',
+        req.twofa and req.twofa != 'all',
+        req.spambot and req.spambot != 'all'
+    ]):
+        filtered = await TelegramAccountModel.list_paginated(
+            user_id=user_id,
+            limit=0,
+            search=req.search,
+            status=req.status,
+            telegram_id_filter=req.id_filter,
+            twofa_filter=req.twofa,
+            spambot_filter=req.spambot
+        )
+        return [a["id"] for a in filtered["items"]]
+    return None
+
 class LogoutBulkRequest(BaseModel):
     account_ids: List[int]
     delete_from_db: bool = False
@@ -78,9 +110,13 @@ async def get_account_detail(account_id: int, current_user: dict = Depends(get_c
     return {"status": "success", "account": account}
 
 @router.post("/connect-offline")
-async def connect_offline_accounts(current_user: dict = Depends(get_current_user)):
-    """Connects all offline/disconnected accounts in bulk."""
-    res = await client_manager.connect_all_offline_accounts(current_user["id"])
+async def connect_offline_accounts(
+    req: Optional[CheckFilterRequest] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """Connects offline/disconnected accounts in bulk (all or filtered)."""
+    target_ids = await _resolve_account_ids_from_filter(current_user["id"], req)
+    res = await client_manager.connect_all_offline_accounts(current_user["id"], account_ids=target_ids)
     return res
 
 @router.post("/{account_id}/connect")
@@ -172,9 +208,13 @@ async def check_single_health(account_id: int, current_user: dict = Depends(get_
     return res
 
 @router.post("/check-health-all")
-async def check_all_health(current_user: dict = Depends(get_current_user)):
-    """Queries @SpamBot for all user accounts sequentially."""
-    results = await client_manager.check_all_accounts_health(current_user["id"])
+async def check_all_health(
+    req: Optional[CheckFilterRequest] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """Queries @SpamBot for filtered or all user accounts sequentially."""
+    target_ids = await _resolve_account_ids_from_filter(current_user["id"], req)
+    results = await client_manager.check_all_accounts_health(current_user["id"], account_ids=target_ids)
     return {"status": "success", "results": results}
 
 # ----------------- 2FA Check & Change (Two-Step Verification) -----------------
@@ -204,9 +244,13 @@ async def reset_account_2fa(account_id: int, current_user: dict = Depends(get_cu
     return res
 
 @router.post("/check-2fa-all")
-async def check_all_2fa(current_user: dict = Depends(get_current_user)):
-    """Checks Two-Step Verification (2FA) for all user accounts sequentially."""
-    results = await client_manager.check_all_accounts_2fa(current_user["id"])
+async def check_all_2fa(
+    req: Optional[CheckFilterRequest] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """Checks Two-Step Verification (2FA) for filtered or all user accounts sequentially."""
+    target_ids = await _resolve_account_ids_from_filter(current_user["id"], req)
+    results = await client_manager.check_all_accounts_2fa(current_user["id"], account_ids=target_ids)
     return {"status": "success", "results": results}
 
 @router.post("/change-2fa")

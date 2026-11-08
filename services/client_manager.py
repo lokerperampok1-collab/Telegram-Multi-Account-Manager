@@ -499,7 +499,7 @@ class ClientManager:
                 }
             return {"status": "error", "message": str(e)}
 
-    async def connect_all_offline_accounts(self, user_id: int) -> dict:
+    async def connect_all_offline_accounts(self, user_id: int, account_ids: Optional[list[int]] = None) -> dict:
         """
         Finds all accounts that are marked offline or currently not connected in memory,
         and reconnects them in parallel (concurrency limited to 10).
@@ -507,6 +507,10 @@ class ClientManager:
         op_id = f"connect_offline_{uuid.uuid4().hex[:8]}"
         self._start_operation(op_id, "Menghubungkan Akun Offline")
         accounts = await TelegramAccountModel.list_by_user_with_sessions(user_id)
+        if account_ids is not None:
+            target_set = set(account_ids)
+            accounts = [a for a in accounts if a["id"] in target_set]
+
         if not accounts:
             self._finish_operation(op_id)
             return {
@@ -1443,11 +1447,16 @@ class ClientManager:
                 "message": str(e)
             }
 
-    async def check_all_accounts_health(self, user_id: int) -> list[dict]:
-        """Runs health checks on all user accounts sequentially."""
+    async def check_all_accounts_health(self, user_id: int, account_ids: Optional[list[int]] = None) -> list[dict]:
+        """Runs health checks on user accounts sequentially (all or filtered)."""
         op_id = f"health_{uuid.uuid4().hex[:8]}"
-        self._start_operation(op_id, "Cek Status @SpamBot Semua Akun")
         accounts = await TelegramAccountModel.list_by_user_with_sessions(user_id)
+        if account_ids is not None:
+            target_set = set(account_ids)
+            accounts = [a for a in accounts if a["id"] in target_set]
+
+        count_desc = f"{len(accounts)} Akun Terfilter" if account_ids is not None else f"Semua Akun ({len(accounts)})"
+        self._start_operation(op_id, f"Cek Status @SpamBot ({count_desc})")
         results = []
         try:
             for idx, acc in enumerate(accounts):
@@ -1938,11 +1947,16 @@ class ClientManager:
         except Exception as e:
             return {"status": "error", "message": f"Gagal mereset 2FA: {str(e)}"}
 
-    async def check_all_accounts_2fa(self, user_id: int) -> list[dict]:
-        """Runs 2FA check on all user accounts sequentially."""
+    async def check_all_accounts_2fa(self, user_id: int, account_ids: Optional[list[int]] = None) -> list[dict]:
+        """Runs 2FA check on user accounts sequentially (all or filtered)."""
         op_id = f"2fa_{uuid.uuid4().hex[:8]}"
-        self._start_operation(op_id, "Cek 2FA Semua Akun")
         accounts = await TelegramAccountModel.list_by_user_with_sessions(user_id)
+        if account_ids is not None:
+            target_set = set(account_ids)
+            accounts = [a for a in accounts if a["id"] in target_set]
+
+        count_desc = f"{len(accounts)} Akun Terfilter" if account_ids is not None else f"Semua Akun ({len(accounts)})"
+        self._start_operation(op_id, f"Cek 2FA ({count_desc})")
         results = []
         try:
             for idx, acc in enumerate(accounts):

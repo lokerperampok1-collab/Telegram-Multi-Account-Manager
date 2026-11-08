@@ -12,6 +12,66 @@ let accountPagination = {
   sort: 'id_desc'
 };
 
+function hasActiveAccountFilter() {
+  return !!(
+    (accountPagination.search && accountPagination.search.trim()) ||
+    (accountPagination.idFilter && accountPagination.idFilter.trim()) ||
+    (accountPagination.status && accountPagination.status !== 'all') ||
+    (accountPagination.twofa && accountPagination.twofa !== 'all') ||
+    (accountPagination.spambot && accountPagination.spambot !== 'all')
+  );
+}
+
+function getActiveAccountFilterPayload() {
+  if (!hasActiveAccountFilter()) return {};
+  return {
+    search: accountPagination.search ? accountPagination.search.trim() : undefined,
+    id_filter: accountPagination.idFilter ? accountPagination.idFilter.trim() : undefined,
+    status: accountPagination.status !== 'all' ? accountPagination.status : undefined,
+    twofa: accountPagination.twofa !== 'all' ? accountPagination.twofa : undefined,
+    spambot: accountPagination.spambot !== 'all' ? accountPagination.spambot : undefined
+  };
+}
+
+function updateFilterActionButtons() {
+  const isFiltered = hasActiveAccountFilter();
+  const count = accountPagination.total || 0;
+
+  const checkHealthBtn = document.getElementById('check-all-health-btn');
+  if (checkHealthBtn && !checkHealthBtn.disabled) {
+    if (isFiltered) {
+      checkHealthBtn.innerHTML = `🛡️ Cek Status (${count})`;
+      checkHealthBtn.title = `Cek status @SpamBot untuk ${count} akun yang cocok dengan filter saat ini`;
+    } else {
+      checkHealthBtn.innerHTML = `🛡️ Cek Status Akun`;
+      checkHealthBtn.title = `Cek status @SpamBot untuk semua akun`;
+    }
+  }
+
+  const check2faBtn = document.getElementById('check-all-2fa-btn');
+  if (check2faBtn && !check2faBtn.disabled) {
+    if (isFiltered) {
+      check2faBtn.innerHTML = `🔒 Cek 2FA (${count})`;
+      check2faBtn.title = `Cek status 2FA untuk ${count} akun yang cocok dengan filter saat ini`;
+    } else {
+      check2faBtn.innerHTML = `🔒 Cek 2FA Semua`;
+      check2faBtn.title = `Cek status 2FA untuk semua akun`;
+    }
+  }
+
+  const connectOfflineBtn = document.getElementById('connect-all-offline-btn');
+  if (connectOfflineBtn && !connectOfflineBtn.disabled) {
+    if (isFiltered) {
+      connectOfflineBtn.innerHTML = `⚡ Hubungkan (${count})`;
+      connectOfflineBtn.title = `Hubungkan akun offline di antara ${count} akun yang terfilter`;
+    } else {
+      connectOfflineBtn.innerHTML = `⚡ Hubungkan Offline`;
+      connectOfflineBtn.title = `Hubungkan seluruh akun yang offline secara massal`;
+    }
+  }
+}
+window.updateFilterActionButtons = updateFilterActionButtons;
+
 // Account management logic
 async function loadAccounts(targetPage = null) {
   const container = document.getElementById('accounts-container');
@@ -70,6 +130,7 @@ async function loadAccounts(targetPage = null) {
       if (navBadge) {
         navBadge.textContent = accountPagination.total;
       }
+      updateFilterActionButtons();
     } else {
       showToast(data.detail || 'Gagal mengambil daftar akun', 'error');
     }
@@ -326,21 +387,38 @@ async function checkAccountHealth(accountId) {
 async function connectAllOfflineAccounts() {
   const btn = document.getElementById('connect-all-offline-btn');
   const sideBtn = document.getElementById('sidebar-connect-offline-btn');
+  const isFiltered = hasActiveAccountFilter();
+  const count = accountPagination.total || 0;
+
+  if (isFiltered && count === 0) {
+    showToast('Tidak ada akun yang cocok dengan filter saat ini', 'warning');
+    return;
+  }
+
   if (btn) {
     btn.disabled = true;
     btn.innerHTML = '<div class="spinner"></div> Menghubungkan...';
   }
   if (sideBtn) sideBtn.disabled = true;
 
+  const opLabel = isFiltered ? `Menghubungkan Akun Offline (${count} Terfilter)` : 'Menghubungkan Semua Akun Offline';
   if (window.OperationManager) {
-    window.OperationManager.setRunning('Menghubungkan Semua Akun Offline', 'accounts-cancel-btn');
+    window.OperationManager.setRunning(opLabel, 'accounts-cancel-btn');
   }
-  showToast('Menghubungkan semua akun yang offline...', 'info');
+  showToast(
+    isFiltered 
+      ? `Menghubungkan akun offline dari ${count} akun terfilter...` 
+      : 'Menghubungkan semua akun yang offline...', 
+    'info'
+  );
+
+  const payload = getActiveAccountFilterPayload();
 
   try {
     const res = await fetch('/api/accounts/connect-offline', {
       method: 'POST',
-      headers: getAuthHeaders()
+      headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
     });
     const data = await res.json();
 
@@ -361,7 +439,7 @@ async function connectAllOfflineAccounts() {
   } finally {
     if (btn) {
       btn.disabled = false;
-      btn.innerHTML = '⚡ Hubungkan Offline';
+      updateFilterActionButtons();
     }
     if (sideBtn) sideBtn.disabled = false;
     if (window.OperationManager) {
@@ -416,19 +494,37 @@ window.cleanDeadSessions = cleanDeadSessions;
 
 async function checkAllAccountsHealth() {
   const btn = document.getElementById('check-all-health-btn');
+  const isFiltered = hasActiveAccountFilter();
+  const count = accountPagination.total || 0;
+
+  if (isFiltered && count === 0) {
+    showToast('Tidak ada akun yang cocok dengan filter saat ini', 'warning');
+    return;
+  }
+
+  const targetLabel = isFiltered ? `${count} Akun Terfilter` : 'Semua Akun';
+
   if (btn) {
     btn.disabled = true;
     btn.innerHTML = '<div class="spinner"></div> Cek @SpamBot...';
   }
   if (window.OperationManager) {
-    window.OperationManager.setRunning('Cek Status @SpamBot Semua Akun', 'accounts-cancel-btn');
+    window.OperationManager.setRunning(`Cek Status @SpamBot (${targetLabel})`, 'accounts-cancel-btn');
   }
-  showToast('Memulai pengecekan @SpamBot untuk semua akun...', 'info');
+  showToast(
+    isFiltered 
+      ? `Memulai pengecekan @SpamBot untuk ${count} akun terfilter...` 
+      : 'Memulai pengecekan @SpamBot untuk semua akun...', 
+    'info'
+  );
+
+  const payload = getActiveAccountFilterPayload();
 
   try {
     const res = await fetch('/api/accounts/check-health-all', {
       method: 'POST',
-      headers: getAuthHeaders()
+      headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
     });
     const data = await res.json();
 
@@ -454,6 +550,9 @@ async function checkAllAccountsHealth() {
         }
       });
       showToast(`Pengecekan selesai untuk ${data.results.length} akun`, 'success');
+      if (accountPagination.spambot && accountPagination.spambot !== 'all') {
+        loadAccounts();
+      }
     } else {
       showToast(data.detail || 'Gagal memeriksa akun', 'error');
     }
@@ -462,7 +561,7 @@ async function checkAllAccountsHealth() {
   } finally {
     if (btn) {
       btn.disabled = false;
-      btn.innerHTML = '🛡️ Cek Status Akun';
+      updateFilterActionButtons();
     }
     if (window.OperationManager) {
       window.OperationManager.setFinished('accounts-cancel-btn');
@@ -626,19 +725,37 @@ async function checkAccount2FA(accountId) {
 
 async function checkAllAccounts2FA() {
   const btn = document.getElementById('check-all-2fa-btn');
+  const isFiltered = hasActiveAccountFilter();
+  const count = accountPagination.total || 0;
+
+  if (isFiltered && count === 0) {
+    showToast('Tidak ada akun yang cocok dengan filter saat ini', 'warning');
+    return;
+  }
+
+  const targetLabel = isFiltered ? `${count} Akun Terfilter` : 'Semua Akun';
+
   if (btn) {
     btn.disabled = true;
     btn.innerHTML = '<div class="spinner"></div> Cek 2FA...';
   }
   if (window.OperationManager) {
-    window.OperationManager.setRunning('Cek Status 2FA Semua Akun', 'accounts-cancel-btn');
+    window.OperationManager.setRunning(`Cek 2FA (${targetLabel})`, 'accounts-cancel-btn');
   }
-  showToast('Memeriksa 2FA akun (mencocokkan 0707 / 7)...', 'info');
+  showToast(
+    isFiltered 
+      ? `Memeriksa 2FA untuk ${count} akun terfilter...` 
+      : 'Memeriksa 2FA akun (mencocokkan 0707 / 7)...', 
+    'info'
+  );
+
+  const payload = getActiveAccountFilterPayload();
 
   try {
     const res = await fetch('/api/accounts/check-2fa-all', {
       method: 'POST',
-      headers: getAuthHeaders()
+      headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
     });
     const data = await res.json();
 
@@ -665,6 +782,9 @@ async function checkAllAccounts2FA() {
         }
       });
       showToast(`Pengecekan selesai (${data.results.length} akun): ${countMatched} cocok, ${countMismatch} bukan 0707/7, ${countReset} reset 7 hari, ${countNo2fa} tanpa 2FA`, 'success');
+      if (accountPagination.twofa && accountPagination.twofa !== 'all') {
+        loadAccounts();
+      }
     } else {
       showToast(data.detail || 'Gagal memeriksa status 2FA', 'error');
     }
@@ -673,7 +793,7 @@ async function checkAllAccounts2FA() {
   } finally {
     if (btn) {
       btn.disabled = false;
-      btn.innerHTML = '🔒 Cek 2FA Semua';
+      updateFilterActionButtons();
     }
     if (window.OperationManager) {
       window.OperationManager.setFinished('accounts-cancel-btn');
