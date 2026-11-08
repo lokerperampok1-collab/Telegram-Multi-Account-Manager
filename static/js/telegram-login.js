@@ -593,10 +593,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // ------------------- MASS PROFILE UPDATE FLOW -------------------
 
+  // ==================== MASS PROFILE MANAGER ====================
   const profileRadioAll = document.getElementById('profile-target-all');
   const profileRadioSelected = document.getElementById('profile-target-selected');
   const profileChecklist = document.getElementById('profile-account-checklist');
   const profileItemsContainer = document.getElementById('profile-account-items');
+  const profileSelectedCount = document.getElementById('profile-selected-count');
   const profileSelectAll = document.getElementById('profile-select-all');
   const profileSelectNone = document.getElementById('profile-select-none');
   const profileSelectOnline = document.getElementById('profile-select-online');
@@ -606,28 +608,147 @@ document.addEventListener('DOMContentLoaded', () => {
   const profileLastName = document.getElementById('profile-lastname');
   const profileAbout = document.getElementById('profile-about');
   const profilePhoto = document.getElementById('profile-photo');
+  const profilePhotoPreviewWrap = document.getElementById('profile-photo-preview-wrap');
+  const profilePhotoPreviewImg = document.getElementById('profile-photo-preview-img');
+  const profilePhotoName = document.getElementById('profile-photo-name');
+  const profilePhotoRemoveBtn = document.getElementById('profile-photo-remove-btn');
   const profileDelay = document.getElementById('profile-delay');
   const profileResults = document.getElementById('profile-results');
 
+  const profileNameInputsWrap = document.getElementById('profile-name-inputs-wrap');
+  const profileNumberingWrap = document.getElementById('profile-numbering-wrap');
+  const profileNumberingStart = document.getElementById('profile-numbering-start');
+
   let cachedProfileAccounts = [];
+  let selectedProfileAccountIds = new Set();
+
+  // Mode Nama Handler & Styling
+  function updateProfileNameModeUI() {
+    const fixedRadio = document.getElementById('profile-name-mode-fixed');
+    const numberedRadio = document.getElementById('profile-name-mode-numbered');
+    const randomRadio = document.getElementById('profile-name-mode-random');
+    const keepRadio = document.getElementById('profile-name-mode-keep');
+
+    const fixedLbl = document.getElementById('profile-name-mode-fixed-lbl');
+    const numberedLbl = document.getElementById('profile-name-mode-numbered-lbl');
+    const randomLbl = document.getElementById('profile-name-mode-random-lbl');
+    const keepLbl = document.getElementById('profile-name-mode-keep-lbl');
+
+    const isFixed = fixedRadio && fixedRadio.checked;
+    const isNumbered = numberedRadio && numberedRadio.checked;
+    const isRandom = randomRadio && randomRadio.checked;
+    const isKeep = keepRadio && keepRadio.checked;
+
+    if (fixedLbl) {
+      fixedLbl.style.border = isFixed ? '2px solid var(--accent-cyan)' : '1px solid var(--border-color)';
+      fixedLbl.style.background = isFixed ? 'rgba(0, 212, 255, 0.12)' : 'rgba(255, 255, 255, 0.03)';
+    }
+    if (numberedLbl) {
+      numberedLbl.style.border = isNumbered ? '2px solid var(--accent-cyan)' : '1px solid var(--border-color)';
+      numberedLbl.style.background = isNumbered ? 'rgba(0, 212, 255, 0.12)' : 'rgba(255, 255, 255, 0.03)';
+    }
+    if (randomLbl) {
+      randomLbl.style.border = isRandom ? '2px solid var(--accent-cyan)' : '1px solid var(--border-color)';
+      randomLbl.style.background = isRandom ? 'rgba(0, 212, 255, 0.12)' : 'rgba(255, 255, 255, 0.03)';
+    }
+    if (keepLbl) {
+      keepLbl.style.border = isKeep ? '2px solid var(--accent-cyan)' : '1px solid var(--border-color)';
+      keepLbl.style.background = isKeep ? 'rgba(0, 212, 255, 0.12)' : 'rgba(255, 255, 255, 0.03)';
+    }
+
+    if (profileNameInputsWrap) {
+      profileNameInputsWrap.style.display = (isFixed || isNumbered) ? 'grid' : 'none';
+    }
+    if (profileNumberingWrap) {
+      profileNumberingWrap.style.display = isNumbered ? 'block' : 'none';
+    }
+  }
+
+  document.querySelectorAll('input[name="profile-name-mode"]').forEach(r => {
+    r.addEventListener('change', updateProfileNameModeUI);
+  });
+  updateProfileNameModeUI();
+
+  // Photo Preview Handler
+  if (profilePhoto) {
+    profilePhoto.addEventListener('change', (e) => {
+      const file = e.target.files && e.target.files[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = (re) => {
+          if (profilePhotoPreviewImg) profilePhotoPreviewImg.src = re.target.result;
+          if (profilePhotoName) profilePhotoName.textContent = file.name;
+          if (profilePhotoPreviewWrap) profilePhotoPreviewWrap.style.display = 'flex';
+        };
+        reader.readAsDataURL(file);
+      } else {
+        if (profilePhotoPreviewWrap) profilePhotoPreviewWrap.style.display = 'none';
+      }
+    });
+  }
+
+  if (profilePhotoRemoveBtn) {
+    profilePhotoRemoveBtn.addEventListener('click', () => {
+      if (profilePhoto) profilePhoto.value = '';
+      if (profilePhotoPreviewWrap) profilePhotoPreviewWrap.style.display = 'none';
+    });
+  }
+
+  // Checklist Helpers
+  function updateProfileCountBadge() {
+    if (profileSelectedCount) {
+      profileSelectedCount.textContent = `${selectedProfileAccountIds.size} dari ${cachedProfileAccounts.length} akun dipilih`;
+    }
+  }
+
+  window.toggleProfileAccount = function(id, checked) {
+    const numId = parseInt(id);
+    if (checked) {
+      selectedProfileAccountIds.add(numId);
+    } else {
+      selectedProfileAccountIds.delete(numId);
+    }
+    updateProfileCountBadge();
+  };
 
   function renderProfileChecklist(accounts) {
     if (!profileItemsContainer) return;
     if (accounts.length === 0) {
-      profileItemsContainer.innerHTML = '<div style="color: var(--text-muted); font-size: 0.8rem; padding: 4px;">Tidak ada akun yang sesuai</div>';
+      profileItemsContainer.innerHTML = '<div style="color: var(--text-muted); font-size: 0.8rem; padding: 6px;">Tidak ada akun yang sesuai</div>';
+      updateProfileCountBadge();
       return;
     }
 
     profileItemsContainer.innerHTML = accounts.map(acc => {
       const name = acc.display_name || acc.username || acc.phone_number || `Akun #${acc.id}`;
       const isOnline = acc.is_active;
+      const isChecked = selectedProfileAccountIds.has(acc.id);
+      const tgId = acc.telegram_id ? `<span style="color: var(--accent-cyan); font-size: 0.7rem;">[ID: ${acc.telegram_id}]</span>` : '';
+
       return `
-        <label style="display: flex; align-items: center; gap: 8px; font-size: 0.8rem; margin-bottom: 4px; cursor: pointer;">
-          <input type="checkbox" class="profile-acc-checkbox" value="${acc.id}" data-online="${isOnline ? '1' : '0'}">
-          <span>${name} (${acc.phone_number || 'Tanpa no.'}) ${isOnline ? '<span style="color: var(--accent-green);">●</span>' : '<span style="color: var(--text-muted);">○</span>'}</span>
+        <label style="display: flex; align-items: center; gap: 8px; font-size: 0.8rem; padding: 5px 6px; margin-bottom: 3px; border-radius: 6px; cursor: pointer; background: rgba(255,255,255,0.02);">
+          <input type="checkbox" class="profile-acc-checkbox" value="${acc.id}" ${isChecked ? 'checked' : ''} onchange="toggleProfileAccount(${acc.id}, this.checked)">
+          <span style="flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+            <strong>${escapeHtml(name)}</strong> (${escapeHtml(acc.phone_number || '-')}) ${tgId}
+          </span>
+          ${isOnline ? '<span style="color: var(--accent-green); font-size: 0.75rem;">● Online</span>' : '<span style="color: var(--text-muted); font-size: 0.75rem;">○ Offline</span>'}
         </label>
       `;
     }).join('');
+
+    updateProfileCountBadge();
+  }
+
+  function getFilteredProfileAccounts() {
+    const q = (profileSearchAccounts ? profileSearchAccounts.value : '').toLowerCase().trim();
+    if (!q) return cachedProfileAccounts;
+    return cachedProfileAccounts.filter(acc => {
+      const name = (acc.display_name || '').toLowerCase();
+      const user = (acc.username || '').toLowerCase();
+      const phone = (acc.phone_number || '').toLowerCase();
+      const tgId = String(acc.telegram_id || '').toLowerCase();
+      return name.includes(q) || user.includes(q) || phone.includes(q) || tgId.includes(q);
+    });
   }
 
   async function populateProfileChecklist() {
@@ -636,81 +757,99 @@ document.addEventListener('DOMContentLoaded', () => {
       const res = await fetch('/api/accounts?limit=0', { headers: getAuthHeaders() });
       const data = await res.json();
       cachedProfileAccounts = data.accounts || [];
+      if (selectedProfileAccountIds.size === 0) {
+        selectedProfileAccountIds = new Set(cachedProfileAccounts.map(a => a.id));
+      }
       renderProfileChecklist(cachedProfileAccounts);
     } catch (e) {
-      profileItemsContainer.innerHTML = '<div style="color: var(--accent-rose); font-size: 0.8rem;">Gagal memuat akun</div>';
+      profileItemsContainer.innerHTML = '<div style="color: var(--accent-rose); font-size: 0.8rem; padding: 6px;">Gagal memuat akun</div>';
     }
   }
+  window.populateProfileChecklist = populateProfileChecklist;
 
   if (profileSelectAll) {
     profileSelectAll.addEventListener('click', () => {
-      document.querySelectorAll('.profile-acc-checkbox').forEach(cb => cb.checked = true);
+      const visible = getFilteredProfileAccounts();
+      visible.forEach(acc => selectedProfileAccountIds.add(acc.id));
+      renderProfileChecklist(visible);
     });
   }
+
   if (profileSelectNone) {
     profileSelectNone.addEventListener('click', () => {
-      document.querySelectorAll('.profile-acc-checkbox').forEach(cb => cb.checked = false);
+      const visible = getFilteredProfileAccounts();
+      visible.forEach(acc => selectedProfileAccountIds.delete(acc.id));
+      renderProfileChecklist(visible);
     });
   }
+
   if (profileSelectOnline) {
     profileSelectOnline.addEventListener('click', () => {
-      document.querySelectorAll('.profile-acc-checkbox').forEach(cb => {
-        cb.checked = cb.getAttribute('data-online') === '1';
+      selectedProfileAccountIds.clear();
+      cachedProfileAccounts.forEach(acc => {
+        if (acc.is_active) selectedProfileAccountIds.add(acc.id);
       });
+      renderProfileChecklist(getFilteredProfileAccounts());
     });
   }
+
   if (profileSearchAccounts) {
-    profileSearchAccounts.addEventListener('input', (e) => {
-      const q = e.target.value.toLowerCase().trim();
-      const filtered = cachedProfileAccounts.filter(acc => {
-        const name = (acc.display_name || '').toLowerCase();
-        const user = (acc.username || '').toLowerCase();
-        const phone = (acc.phone_number || '').toLowerCase();
-        return name.includes(q) || user.includes(q) || phone.includes(q);
-      });
-      renderProfileChecklist(filtered);
+    profileSearchAccounts.addEventListener('input', () => {
+      renderProfileChecklist(getFilteredProfileAccounts());
     });
   }
 
   if (profileRadioAll && profileRadioSelected && profileChecklist) {
     profileRadioAll.addEventListener('change', () => {
       profileChecklist.style.display = 'none';
+      if (profileSelectedCount) profileSelectedCount.style.display = 'none';
     });
     profileRadioSelected.addEventListener('change', () => {
       profileChecklist.style.display = 'block';
+      if (profileSelectedCount) profileSelectedCount.style.display = 'inline-block';
       populateProfileChecklist();
     });
   }
 
   if (startProfileBtn && profileResults) {
     startProfileBtn.addEventListener('click', async () => {
-      const firstName = profileFirstName.value.trim();
-      const lastName = profileLastName.value.trim();
-      const about = profileAbout.value.trim();
-      const hasPhoto = profilePhoto.files && profilePhoto.files.length > 0;
+      const modeRadio = document.querySelector('input[name="profile-name-mode"]:checked');
+      const nameMode = modeRadio ? modeRadio.value : 'fixed';
 
-      if (!firstName && !lastName && !about && !hasPhoto) {
-        showToast('Isi minimal satu kolom (Nama, Bio, atau Foto Profil)', 'error');
+      const firstName = (profileFirstName ? profileFirstName.value : '').trim();
+      const lastName = (profileLastName ? profileLastName.value : '').trim();
+      const numberingStart = parseInt(profileNumberingStart ? profileNumberingStart.value : '1') || 1;
+      const about = (profileAbout ? profileAbout.value : '').trim();
+      const hasPhoto = profilePhoto && profilePhoto.files && profilePhoto.files.length > 0;
+
+      // Validation
+      if (nameMode === 'fixed' && !firstName && !lastName && !about && !hasPhoto) {
+        showToast('Isi nama, bio, atau pilih foto profil', 'warning');
+        return;
+      }
+      if (nameMode === 'keep' && !about && !hasPhoto) {
+        showToast('Pilih foto profil atau isi bio jika memilih "Jangan Ubah Nama"', 'warning');
         return;
       }
 
       let targetIds = null;
       if (profileRadioSelected && profileRadioSelected.checked) {
-        const checkedBoxes = document.querySelectorAll('.profile-acc-checkbox:checked');
-        targetIds = Array.from(checkedBoxes).map(cb => cb.value);
-        if (targetIds.length === 0) {
-          showToast('Pilih minimal satu akun target', 'error');
+        if (selectedProfileAccountIds.size === 0) {
+          showToast('Pilih minimal satu akun target', 'warning');
           return;
         }
+        targetIds = Array.from(selectedProfileAccountIds);
       }
 
-      const delay = parseInt(profileDelay.value) || 3;
+      const delay = parseInt(profileDelay ? profileDelay.value : '2') || 2;
 
       const formData = new FormData();
+      formData.append('name_mode', nameMode);
+      formData.append('numbering_start', numberingStart);
       if (firstName) formData.append('first_name', firstName);
       if (lastName) formData.append('last_name', lastName);
       if (about) formData.append('about', about);
-      if (targetIds) formData.append('account_ids', targetIds.join(','));
+      if (targetIds && targetIds.length > 0) formData.append('account_ids', targetIds.join(','));
       formData.append('delay_seconds', delay);
       if (hasPhoto) {
         formData.append('photo', profilePhoto.files[0]);
@@ -746,8 +885,8 @@ document.addEventListener('DOMContentLoaded', () => {
             return `
               <div class="bulk-item">
                 <div>
-                  <span class="bulk-item-phone">${r.name || 'Akun'}</span>
-                  <div style="font-size: 0.75rem; color: var(--text-muted);">${r.message}</div>
+                  <span class="bulk-item-phone">${escapeHtml(r.name || 'Akun')}</span>
+                  <div style="font-size: 0.75rem; color: var(--text-muted);">${escapeHtml(r.message)}</div>
                 </div>
                 <div>
                   <span class="badge-status ${badgeClass}">${badgeText}</span>
@@ -758,16 +897,19 @@ document.addEventListener('DOMContentLoaded', () => {
           showToast('Pembaruan profil massal selesai!', 'success');
           if (window.loadAccounts) window.loadAccounts();
         } else {
-          profileResults.innerHTML = `<div style="color: var(--accent-rose); padding: 8px;">${data.detail || 'Gagal mengubah profil'}</div>`;
+          profileResults.innerHTML = `<div style="color: var(--accent-rose); padding: 8px;">${escapeHtml(data.detail || 'Gagal mengubah profil')}</div>`;
         }
       } catch (e) {
         showToast('Koneksi server gagal', 'error');
       } finally {
         startProfileBtn.disabled = false;
-        startProfileBtn.innerHTML = '<span>👤 Terapkan Profil ke Semua Akun</span>';
+        startProfileBtn.innerHTML = '<span>👤 Terapkan Perubahan Profil</span>';
         if (window.OperationManager) {
           window.OperationManager.setFinished('cancel-profile-btn');
         }
+      }
+    });
+  }
       }
     });
   }

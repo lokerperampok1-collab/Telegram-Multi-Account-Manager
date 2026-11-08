@@ -205,6 +205,9 @@ function renderAccounts(accounts) {
           <button class="btn btn-secondary btn-sm" onclick="checkAccount2FA(${acc.id})" title="Cek status 2FA (Cloud Password)">
             🔒
           </button>
+          <button class="btn btn-secondary btn-sm" onclick="openSingleProfileModal(${acc.id}, '${escapeHtml(acc.display_name || '')}')" title="Ubah Nama & Foto Profil Akun Ini">
+            👤
+          </button>
           ${isOnline ? `
             <button class="btn btn-secondary btn-sm" onclick="disconnectAccount(${acc.id})">
               Putuskan
@@ -875,6 +878,15 @@ document.addEventListener('DOMContentLoaded', () => {
   const checkAll2faBtn = document.getElementById('check-all-2fa-btn');
   if (checkAll2faBtn) {
     checkAll2faBtn.addEventListener('click', checkAllAccounts2FA);
+  }
+
+  const gotoProfileBtn = document.getElementById('goto-profile-btn');
+  if (gotoProfileBtn) {
+    gotoProfileBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      const navProfile = document.getElementById('nav-btn-profile');
+      if (navProfile) navProfile.click();
+    });
   }
 
   // Export dropdown handlers
@@ -1622,6 +1634,8 @@ window.openDevicesModal = openDevicesModal;
 window.closeDevicesModal = closeDevicesModal;
 window.loadAccountDevices = loadAccountDevices;
 window.terminateDeviceSession = terminateDeviceSession;
+window.openSingleProfileModal = openSingleProfileModal;
+window.closeSingleProfileModal = closeSingleProfileModal;
 
 // ==================== CONNECTED DEVICES MODAL CONTROLLER ====================
 let currentDevicesAccountId = null;
@@ -1785,6 +1799,136 @@ async function terminateDeviceSession(accountId, authHash, deviceName) {
     showToast('Koneksi gagal saat memutuskan sesi', 'error');
   }
 }
+
+// ==================== SINGLE PROFILE MODAL CONTROLLER ====================
+function openSingleProfileModal(accountId, currentName) {
+  const modal = document.getElementById('single-profile-modal');
+  if (!modal) return;
+  const idInput = document.getElementById('single-profile-acc-id');
+  const titleEl = document.getElementById('single-profile-title');
+  const fnInput = document.getElementById('single-profile-firstname');
+  const lnInput = document.getElementById('single-profile-lastname');
+  const aboutInput = document.getElementById('single-profile-about');
+  const photoInput = document.getElementById('single-profile-photo');
+  const preview = document.getElementById('single-profile-photo-preview');
+
+  if (idInput) idInput.value = accountId;
+  if (titleEl) titleEl.textContent = `Ubah Profil: ${currentName || 'Akun #' + accountId}`;
+
+  const parts = (currentName || '').trim().split(/\s+/);
+  const fn = parts[0] || '';
+  const ln = parts.slice(1).join(' ') || '';
+  if (fnInput) fnInput.value = fn;
+  if (lnInput) lnInput.value = ln;
+  if (aboutInput) aboutInput.value = '';
+
+  if (photoInput) photoInput.value = '';
+  if (preview) preview.style.display = 'none';
+
+  modal.style.display = 'flex';
+  modal.classList.add('active');
+}
+
+function closeSingleProfileModal() {
+  const modal = document.getElementById('single-profile-modal');
+  if (modal) {
+    modal.style.display = 'none';
+    modal.classList.remove('active');
+  }
+}
+
+// Single profile event listeners
+document.addEventListener('DOMContentLoaded', () => {
+  const singlePhotoInput = document.getElementById('single-profile-photo');
+  const singlePreview = document.getElementById('single-profile-photo-preview');
+  const singleThumb = document.getElementById('single-profile-img-thumb');
+  const singleName = document.getElementById('single-profile-img-name');
+  const singleRemovePhoto = document.getElementById('single-profile-remove-photo');
+  const singleSubmitBtn = document.getElementById('single-profile-submit-btn');
+  const singleCancelBtn = document.getElementById('single-profile-cancel-btn');
+  const singleModalClose = document.getElementById('single-profile-modal-close');
+  const singleModal = document.getElementById('single-profile-modal');
+
+  if (singlePhotoInput) {
+    singlePhotoInput.addEventListener('change', (e) => {
+      const file = e.target.files && e.target.files[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = (re) => {
+          if (singleThumb) singleThumb.src = re.target.result;
+          if (singleName) singleName.textContent = file.name;
+          if (singlePreview) singlePreview.style.display = 'flex';
+        };
+        reader.readAsDataURL(file);
+      } else {
+        if (singlePreview) singlePreview.style.display = 'none';
+      }
+    });
+  }
+
+  if (singleRemovePhoto) {
+    singleRemovePhoto.addEventListener('click', () => {
+      if (singlePhotoInput) singlePhotoInput.value = '';
+      if (singlePreview) singlePreview.style.display = 'none';
+    });
+  }
+
+  if (singleModalClose) singleModalClose.addEventListener('click', closeSingleProfileModal);
+  if (singleCancelBtn) singleCancelBtn.addEventListener('click', closeSingleProfileModal);
+  if (singleModal) {
+    singleModal.addEventListener('click', (e) => {
+      if (e.target === singleModal) closeSingleProfileModal();
+    });
+  }
+
+  if (singleSubmitBtn) {
+    singleSubmitBtn.addEventListener('click', async () => {
+      const accId = document.getElementById('single-profile-acc-id').value;
+      const fn = (document.getElementById('single-profile-firstname').value || '').trim();
+      const ln = (document.getElementById('single-profile-lastname').value || '').trim();
+      const about = (document.getElementById('single-profile-about').value || '').trim();
+      const hasPhoto = singlePhotoInput && singlePhotoInput.files && singlePhotoInput.files.length > 0;
+
+      if (!fn && !ln && !about && !hasPhoto) {
+        showToast('Isi minimal nama atau pilih foto profil', 'warning');
+        return;
+      }
+
+      const formData = new FormData();
+      if (fn) formData.append('first_name', fn);
+      if (ln) formData.append('last_name', ln);
+      if (about) formData.append('about', about);
+      if (hasPhoto) formData.append('photo', singlePhotoInput.files[0]);
+
+      singleSubmitBtn.disabled = true;
+      singleSubmitBtn.innerHTML = '<div class="spinner"></div> Menyimpan...';
+
+      try {
+        const token = localStorage.getItem('token');
+        const res = await fetch(`/api/accounts/${accId}/update-profile`, {
+          method: 'POST',
+          headers: {
+            'Authorization': token ? `Bearer ${token}` : ''
+          },
+          body: formData
+        });
+        const data = await res.json();
+        if (res.ok && data.status === 'success') {
+          showToast(data.message || 'Profil berhasil diperbarui!', 'success');
+          closeSingleProfileModal();
+          loadAccounts();
+        } else {
+          showToast(data.detail || data.message || 'Gagal mengubah profil', 'error');
+        }
+      } catch (err) {
+        showToast('Koneksi server gagal', 'error');
+      } finally {
+        singleSubmitBtn.disabled = false;
+        singleSubmitBtn.innerHTML = '<span>💾 Simpan Perubahan Profil</span>';
+      }
+    });
+  }
+});
 
 
 

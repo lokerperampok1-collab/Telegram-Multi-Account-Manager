@@ -2,6 +2,7 @@ import io
 import re
 import uuid
 import json
+import random
 import zipfile
 import base64
 import asyncio
@@ -1999,15 +2000,35 @@ class ClientManager:
         first_name: Optional[str] = None,
         last_name: Optional[str] = None,
         about: Optional[str] = None,
+        name_mode: str = "fixed",  # "fixed", "numbered", "random_id", "keep"
+        numbering_start: int = 1,
         photo_bytes: Optional[bytes] = None,
         photo_filename: str = "avatar.jpg",
         account_ids: Optional[list[int]] = None,
         delay_seconds: int = 3
     ) -> list[dict]:
-        """Batch updates profile name, bio, and avatar for selected accounts."""
+        """Batch updates profile name, bio, and avatar for selected or all accounts."""
         op_id = f"profile_{uuid.uuid4().hex[:8]}"
         self._start_operation(op_id, "Update Profil Massal")
         results = []
+
+        random_names = [
+            ("Ahmad", "Fauzi"), ("Budi", "Santoso"), ("Dimas", "Pratama"), ("Eko", "Wahyu"),
+            ("Fajar", "Hidayat"), ("Gilang", "Ramadhan"), ("Hadi", "Kusuma"), ("Indra", "Saputra"),
+            ("Joko", "Susilo"), ("Kurnia", "Wijaya"), ("Lukman", "Hakim"), ("Muhammad", "Rizki"),
+            ("Nanda", "Setiawan"), ("Oscar", "Firmansyah"), ("Panji", "Asmoro"), ("Rian", "Prasetyo"),
+            ("Surya", "Aditama"), ("Teguh", "Wibowo"), ("Wahyu", "Nugroho"), ("Yoga", "Pratama"),
+            ("Anisa", "Rahmawati"), ("Bella", "Safitri"), ("Citra", "Dewi"), ("Dian", "Puspitasari"),
+            ("Eka", "Lestari"), ("Fitri", "Handayani"), ("Gita", "Permata"), ("Hesti", "Wulandari"),
+            ("Indah", "Permatasari"), ("Kartika", "Sari"), ("Laras", "Ayuningtyas"), ("Maya", "Anggraini"),
+            ("Nabila", "Putri"), ("Putri", "Kusuma"), ("Rani", "Maharani"), ("Siti", "Aisyah"),
+            ("Tia", "Novitasari"), ("Ulfa", "Khadijah"), ("Vina", "Panduwinata"), ("Winda", "Amelia"),
+            ("Aris", "Munandar"), ("Bayu", "Segara"), ("Cahyo", "Utomo"), ("Dicky", "Zulkarnain"),
+            ("Farhan", "Maulana"), ("Galih", "Prakoso"), ("Hendra", "Gunawan"), ("Irfan", "Hakim"),
+            ("Kevin", "Sanputra"), ("Mario", "Teguh")
+        ]
+        random.shuffle(random_names)
+
         try:
             all_accounts = await TelegramAccountModel.list_by_user(user_id)
             if account_ids:
@@ -2041,13 +2062,32 @@ class ClientManager:
 
                 try:
                     actions_done = []
+
+                    # Determine target names based on name_mode
+                    target_fn = None
+                    target_ln = None
+                    if name_mode == "random_id":
+                        pair = random_names[idx % len(random_names)]
+                        target_fn = pair[0]
+                        target_ln = pair[1]
+                    elif name_mode == "numbered":
+                        num = numbering_start + idx
+                        target_fn = f"{first_name or ''} {num}".strip() if first_name else f"Akun {num}"
+                        target_ln = last_name or ""
+                    elif name_mode == "keep":
+                        target_fn = None
+                        target_ln = None
+                    else:  # "fixed"
+                        target_fn = first_name
+                        target_ln = last_name
+
                     # Update text profile (first_name, last_name, about)
-                    if first_name is not None or last_name is not None or about is not None:
+                    if target_fn is not None or target_ln is not None or about is not None:
                         kwargs = {}
-                        if first_name is not None and first_name != "":
-                            kwargs["first_name"] = first_name
-                        if last_name is not None and last_name != "":
-                            kwargs["last_name"] = last_name
+                        if target_fn is not None and target_fn != "":
+                            kwargs["first_name"] = target_fn
+                        if target_ln is not None:
+                            kwargs["last_name"] = target_ln
                         if about is not None and about != "":
                             kwargs["about"] = about[:70]
 
@@ -2056,7 +2096,7 @@ class ClientManager:
                             new_display = f"{kwargs.get('first_name', acc.get('display_name', ''))} {kwargs.get('last_name', '')}".strip()
                             if new_display:
                                 await TelegramAccountModel.update_display_name(acc_id, new_display)
-                            actions_done.append("Nama/Bio diubah")
+                            actions_done.append(f"Nama diubah ('{new_display}')")
 
                     # Update photo if provided
                     if photo_bytes:

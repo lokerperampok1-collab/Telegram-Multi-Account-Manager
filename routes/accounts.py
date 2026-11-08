@@ -359,6 +359,8 @@ async def update_profile(
     first_name: Optional[str] = Form(None),
     last_name: Optional[str] = Form(None),
     about: Optional[str] = Form(None),
+    name_mode: str = Form("fixed"),
+    numbering_start: int = Form(1),
     account_ids: Optional[str] = Form(None),
     delay_seconds: int = Form(3),
     photo: Optional[UploadFile] = File(None),
@@ -383,12 +385,47 @@ async def update_profile(
         first_name=first_name,
         last_name=last_name,
         about=about,
+        name_mode=name_mode,
+        numbering_start=numbering_start,
         photo_bytes=photo_bytes,
         photo_filename=photo_filename,
         account_ids=parsed_ids,
         delay_seconds=delay_seconds
     )
     return {"status": "success", "results": results}
+
+@router.post("/{account_id}/update-profile")
+async def update_single_profile(
+    account_id: int,
+    first_name: Optional[str] = Form(None),
+    last_name: Optional[str] = Form(None),
+    about: Optional[str] = Form(None),
+    photo: Optional[UploadFile] = File(None),
+    current_user: dict = Depends(get_current_user)
+):
+    """Updates profile details and avatar for a single account directly."""
+    photo_bytes = None
+    photo_filename = "avatar.jpg"
+    if photo and photo.filename:
+        photo_bytes = await photo.read()
+        photo_filename = photo.filename
+
+    results = await client_manager.update_profile_bulk(
+        user_id=current_user["id"],
+        first_name=first_name,
+        last_name=last_name,
+        about=about,
+        name_mode="fixed",
+        numbering_start=1,
+        photo_bytes=photo_bytes,
+        photo_filename=photo_filename,
+        account_ids=[account_id],
+        delay_seconds=0
+    )
+    if results and results[0].get("status") == "success":
+        return {"status": "success", "message": results[0].get("message", "Profil berhasil diperbarui")}
+    error_msg = results[0].get("message") if results else "Gagal memperbarui profil"
+    raise HTTPException(status_code=400, detail=error_msg)
 
 # ----------------- Join Group -----------------
 

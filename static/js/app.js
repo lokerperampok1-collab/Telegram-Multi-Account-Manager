@@ -122,6 +122,11 @@ document.addEventListener('DOMContentLoaded', () => {
           if (window.startQRFlow) window.startQRFlow();
         } else if (targetViewId === 'view-accounts') {
           if (window.loadAccounts) window.loadAccounts();
+        } else if (targetViewId === 'view-profile') {
+          const radioSel = document.getElementById('profile-target-selected');
+          if (radioSel && radioSel.checked && window.populateProfileChecklist) {
+            window.populateProfileChecklist();
+          }
         }
 
         // Scroll smoothly to top
