@@ -49,12 +49,44 @@ from telethon.errors import (
     ChatWriteForbiddenError,
     UserBannedInChannelError,
     SlowModeWaitError,
-    FreshResetAuthorisationForbiddenError
+    FreshResetAuthorisationForbiddenError,
+    AuthKeyDuplicatedError,
+    AuthKeyInvalidError,
+    SessionExpiredError,
+    SecurityError
 )
 
 from config import settings
 from services.encryption import encryption_service
 from database.models import TelegramAccountModel
+
+def is_session_dead_or_revoked(e: Exception) -> bool:
+    """Checks whether an exception indicates that the Telegram session AuthKey is permanently revoked/dead."""
+    dead_classes = (
+        AuthKeyUnregisteredError,
+        AuthKeyDuplicatedError,
+        AuthKeyInvalidError,
+        SessionRevokedError,
+        SessionExpiredError,
+        UserDeactivatedError,
+        UserDeactivatedBanError,
+        SecurityError
+    )
+    if isinstance(e, dead_classes):
+        return True
+    msg = str(e).lower()
+    dead_keywords = [
+        "can no longer be used",
+        "authorization key (session file) was used under two different ip addresses",
+        "authorization key was used under two different ip addresses",
+        "auth key is unregistered",
+        "the key is not registered in the system",
+        "session is revoked",
+        "session expired",
+        "user_deactivated",
+        "user_deactivated_ban"
+    ]
+    return any(k in msg for k in dead_keywords)
 
 class ClientManager:
     """Singleton to manage Telethon clients, login sessions, and connections."""
@@ -420,7 +452,7 @@ class ClientManager:
         """Connects a stored account from DB using its saved StringSession."""
         account = await TelegramAccountModel.get_by_id(account_id, user_id)
         if not account:
-            return {"status": "error", "message": "Account not found"}
+            return {"status": "error", "account_deleted": True, "message": "Account not found"}
 
         if account_id in self._active_clients and self._active_clients[account_id].is_connected():
             return {"status": "success", "message": "Already connected", "is_active": True}
@@ -432,14 +464,39 @@ class ClientManager:
             await client.connect()
 
             if not await client.is_user_authorized():
-                await client.disconnect()
-                await TelegramAccountModel.update_status(account_id, False)
-                return {"status": "error", "message": "Session is revoked or expired. Please re-login."}
+                try:
+                    await client.disconnect()
+                except Exception:
+                    pass
+                self._active_clients.pop(account_id, None)
+                await TelegramAccountModel.delete(account_id, user_id)
+                return {
+                    "status": "error",
+                    "session_revoked": True,
+                    "account_deleted": True,
+                    "account_id": account_id,
+                    "message": "Sesi akun ini telah mati/ter-revoke oleh Telegram dan telah otomatis dihapus dari daftar akun."
+                }
 
             self._active_clients[account_id] = client
             await TelegramAccountModel.update_status(account_id, True)
             return {"status": "success", "message": "Account connected successfully", "is_active": True}
         except Exception as e:
+            if is_session_dead_or_revoked(e):
+                cl = self._active_clients.pop(account_id, None)
+                if cl and cl.is_connected():
+                    try:
+                        await cl.disconnect()
+                    except Exception:
+                        pass
+                await TelegramAccountModel.delete(account_id, user_id)
+                return {
+                    "status": "error",
+                    "session_revoked": True,
+                    "account_deleted": True,
+                    "account_id": account_id,
+                    "message": f"Sesi akun mati/ter-revoke ({str(e)}) dan telah otomatis dihapus dari daftar akun."
+                }
             return {"status": "error", "message": str(e)}
 
     async def connect_all_offline_accounts(self, user_id: int) -> dict:
@@ -666,6 +723,90 @@ class ClientManager:
             "deleted_count": 0,
             "offline_accounts": offline_accounts,
             "message": msg
+        }
+
+    async def clean_dead_sessions(self, user_id: int) -> dict:
+        """
+        Scans all accounts of a user.
+        Tests whether each session is still valid or dead/revoked.
+        Automatically DELETES all dead/revoked accounts from the database and memory.
+        Returns detailed summary of purged accounts.
+        """
+        accounts = await TelegramAccountModel.list_by_user(user_id)
+        if not accounts:
+            return {
+                "status": "success",
+                "total_scanned": 0,
+                "deleted_count": 0,
+                "alive_count": 0,
+                "deleted_accounts": [],
+                "message": "Tidak ada akun Telegram terdaftar"
+            }
+
+        deleted_accounts = []
+        alive_accounts = []
+        sem = asyncio.Semaphore(10)
+        api_id, api_hash = self._get_credentials()
+
+        async def check_and_clean_single(acc):
+            acc_id = acc["id"]
+            phone = acc.get("phone_number") or ""
+            name = acc.get("display_name") or phone or f"Akun #{acc_id}"
+            client = self._active_clients.get(acc_id)
+            is_dead = False
+            dead_reason = ""
+
+            async with sem:
+                try:
+                    if not client or not client.is_connected():
+                        session_str = encryption_service.decrypt(acc["session_string"])
+                        client = TelegramClient(StringSession(session_str), api_id, api_hash)
+                        await client.connect()
+
+                    if not await client.is_user_authorized():
+                        is_dead = True
+                        dead_reason = "Sesi tidak terotorisasi / kedaluwarsa"
+                    else:
+                        me = await client.get_me()
+                        if not me:
+                            is_dead = True
+                            dead_reason = "GetMe gagal / kosong"
+                        else:
+                            self._active_clients[acc_id] = client
+                            await TelegramAccountModel.update_status(acc_id, True)
+                            alive_accounts.append({"id": acc_id, "name": name, "phone": phone})
+                except Exception as e:
+                    if is_session_dead_or_revoked(e):
+                        is_dead = True
+                        dead_reason = str(e)
+                    else:
+                        # Temporary network error or timeout - do not delete, just update offline
+                        await TelegramAccountModel.update_status(acc_id, False)
+
+                if is_dead:
+                    cl = self._active_clients.pop(acc_id, None)
+                    if cl and cl.is_connected():
+                        try:
+                            await cl.disconnect()
+                        except Exception:
+                            pass
+                    await TelegramAccountModel.delete(acc_id, user_id)
+                    deleted_accounts.append({
+                        "id": acc_id,
+                        "name": name,
+                        "phone": phone,
+                        "reason": dead_reason
+                    })
+
+        await asyncio.gather(*(check_and_clean_single(acc) for acc in accounts))
+
+        return {
+            "status": "success",
+            "total_scanned": len(accounts),
+            "deleted_count": len(deleted_accounts),
+            "alive_count": len(alive_accounts),
+            "deleted_accounts": deleted_accounts,
+            "message": f"Pembersihan selesai! {len(deleted_accounts)} akun mati/ter-revoke berhasil dihapus dari dashboard. {len(alive_accounts)} akun aktif tersisa."
         }
 
     # ------------------ Active Devices / Authorizations ------------------
@@ -1174,17 +1315,58 @@ class ClientManager:
         if not client or not client.is_connected():
             connect_res = await self.connect_account(account_id, user_id)
             if connect_res.get("status") != "success":
-                return {"status": "banned", "badge": "Banned / Mati", "message": connect_res.get("message", "Sesi mati / kedaluwarsa")}
+                return {
+                    "status": "banned",
+                    "badge": "Banned / Mati",
+                    "account_deleted": connect_res.get("account_deleted", False),
+                    "message": connect_res.get("message", "Sesi mati / kedaluwarsa")
+                }
             client = self._active_clients.get(account_id)
 
         try:
             if not await client.is_user_authorized():
-                await TelegramAccountModel.update_status(account_id, False)
-                return {"status": "banned", "badge": "Banned / Mati", "message": "Sesi tidak terotorisasi atau akun di-banned"}
+                cl = self._active_clients.pop(account_id, None)
+                if cl and cl.is_connected():
+                    try:
+                        await cl.disconnect()
+                    except Exception:
+                        pass
+                await TelegramAccountModel.delete(account_id, user_id)
+                return {
+                    "status": "banned",
+                    "badge": "Banned / Mati",
+                    "account_deleted": True,
+                    "message": "Sesi tidak terotorisasi (mati/revoke) dan telah otomatis dihapus dari daftar akun."
+                }
         except (UserDeactivatedError, UserDeactivatedBanError, AuthKeyUnregisteredError):
-            await TelegramAccountModel.update_status(account_id, False)
-            return {"status": "banned", "badge": "Banned / Mati", "message": "Akun Telegram telah dinonaktifkan / di-banned"}
+            cl = self._active_clients.pop(account_id, None)
+            if cl and cl.is_connected():
+                try:
+                    await cl.disconnect()
+                except Exception:
+                    pass
+            await TelegramAccountModel.delete(account_id, user_id)
+            return {
+                "status": "banned",
+                "badge": "Banned / Mati",
+                "account_deleted": True,
+                "message": "Akun Telegram telah mati/ter-revoke dan telah otomatis dihapus dari daftar akun."
+            }
         except Exception as e:
+            if is_session_dead_or_revoked(e):
+                cl = self._active_clients.pop(account_id, None)
+                if cl and cl.is_connected():
+                    try:
+                        await cl.disconnect()
+                    except Exception:
+                        pass
+                await TelegramAccountModel.delete(account_id, user_id)
+                return {
+                    "status": "banned",
+                    "badge": "Banned / Mati",
+                    "account_deleted": True,
+                    "message": f"Sesi akun mati/ter-revoke ({str(e)}) dan telah otomatis dihapus dari daftar akun."
+                }
             return {"status": "banned", "badge": "Banned / Mati", "message": f"Error otorisasi: {str(e)}"}
 
         # Conversation with @SpamBot
@@ -1290,16 +1472,25 @@ class ClientManager:
         if not client or not client.is_connected():
             connect_res = await self.connect_account(account_id, user_id)
             if connect_res.get("status") != "success":
-                return {
-                    "status": "error",
-                    "message": f"Gagal menghubungkan sesi akun: {connect_res.get('message', 'Sesi mati / kedaluwarsa')}"
-                }
+                return connect_res
             client = self._active_clients.get(account_id)
 
         try:
             if not await client.is_user_authorized():
-                await TelegramAccountModel.update_status(account_id, False)
-                return {"status": "error", "message": "Sesi tidak terotorisasi atau sudah kedaluwarsa"}
+                cl = self._active_clients.pop(account_id, None)
+                if cl and cl.is_connected():
+                    try:
+                        await cl.disconnect()
+                    except Exception:
+                        pass
+                await TelegramAccountModel.delete(account_id, user_id)
+                return {
+                    "status": "error",
+                    "session_revoked": True,
+                    "account_deleted": True,
+                    "account_id": account_id,
+                    "message": "Sesi tidak terotorisasi (mati/revoke) dan telah otomatis dihapus dari daftar akun"
+                }
 
             # Fetch messages from official Telegram Notifications peer (777000)
             messages = await client.get_messages(777000, limit=limit)
@@ -1365,9 +1556,36 @@ class ClientManager:
                 "count": len(parsed_messages)
             }
         except (UserDeactivatedError, UserDeactivatedBanError, AuthKeyUnregisteredError):
-            await TelegramAccountModel.update_status(account_id, False)
-            return {"status": "error", "message": "Akun Telegram telah dinonaktifkan / di-banned"}
+            cl = self._active_clients.pop(account_id, None)
+            if cl and cl.is_connected():
+                try:
+                    await cl.disconnect()
+                except Exception:
+                    pass
+            await TelegramAccountModel.delete(account_id, user_id)
+            return {
+                "status": "error",
+                "session_revoked": True,
+                "account_deleted": True,
+                "account_id": account_id,
+                "message": "Akun Telegram telah mati/ter-revoke dan telah otomatis dihapus dari daftar akun."
+            }
         except Exception as e:
+            if is_session_dead_or_revoked(e):
+                cl = self._active_clients.pop(account_id, None)
+                if cl and cl.is_connected():
+                    try:
+                        await cl.disconnect()
+                    except Exception:
+                        pass
+                await TelegramAccountModel.delete(account_id, user_id)
+                return {
+                    "status": "error",
+                    "session_revoked": True,
+                    "account_deleted": True,
+                    "account_id": account_id,
+                    "message": f"Sesi akun mati/ter-revoke ({str(e)}) dan telah otomatis dihapus dari daftar akun."
+                }
             return {"status": "error", "message": f"Gagal mengambil pesan OTP: {str(e)}"}
 
     # ------------------ 2FA Status Checker ------------------
@@ -1538,11 +1756,38 @@ class ClientManager:
                 "message": f"Sandi 2FA belum tersimpan / tidak cocok dengan kandidat ({', '.join(candidates)})."
             }
         except (UserDeactivatedError, UserDeactivatedBanError, AuthKeyUnregisteredError):
-            await TelegramAccountModel.update_status(account_id, False)
-            return {"status": "error", "message": "Akun Telegram telah dinonaktifkan / di-banned"}
+            cl = self._active_clients.pop(account_id, None)
+            if cl and cl.is_connected():
+                try:
+                    await cl.disconnect()
+                except Exception:
+                    pass
+            await TelegramAccountModel.delete(account_id, user_id)
+            return {
+                "status": "error",
+                "session_revoked": True,
+                "account_deleted": True,
+                "account_id": account_id,
+                "message": "Akun Telegram telah mati/ter-revoke dan telah otomatis dihapus dari daftar akun."
+            }
         except FloodWaitError as e:
             return {"status": "error", "message": f"Terkena FloodWait Telegram, tunggu {e.seconds} detik."}
         except Exception as e:
+            if is_session_dead_or_revoked(e):
+                cl = self._active_clients.pop(account_id, None)
+                if cl and cl.is_connected():
+                    try:
+                        await cl.disconnect()
+                    except Exception:
+                        pass
+                await TelegramAccountModel.delete(account_id, user_id)
+                return {
+                    "status": "error",
+                    "session_revoked": True,
+                    "account_deleted": True,
+                    "account_id": account_id,
+                    "message": f"Sesi akun mati/ter-revoke ({str(e)}) dan telah otomatis dihapus dari daftar akun."
+                }
             return {"status": "error", "message": f"Gagal mengecek status 2FA: {str(e)}"}
 
     async def reset_account_2fa(self, account_id: int, user_id: int) -> dict:

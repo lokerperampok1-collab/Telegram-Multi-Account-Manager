@@ -155,6 +155,12 @@ async def logout_bulk(req: LogoutBulkRequest, current_user: dict = Depends(get_c
     results = await client_manager.logout_bulk_accounts(current_user["id"], req.account_ids, delete_from_db=req.delete_from_db)
     return {"status": "success", "results": results}
 
+@router.post("/clean-dead-sessions")
+async def clean_dead_sessions_route(current_user: dict = Depends(get_current_user)):
+    """Scans all accounts and automatically purges dead / revoked sessions from database and dashboard."""
+    res = await client_manager.clean_dead_sessions(current_user["id"])
+    return res
+
 # ----------------- Health & SpamBot Check -----------------
 
 @router.post("/{account_id}/check-health")

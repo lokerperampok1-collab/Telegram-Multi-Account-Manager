@@ -216,6 +216,13 @@ async function connectAccount(accountId) {
       headers: getAuthHeaders()
     });
     const data = await res.json();
+    if (data.account_deleted || data.session_revoked) {
+      showToast(`⚠️ ${data.message || 'Sesi akun mati/ter-revoke dan telah otomatis dihapus dari dashboard.'}`, 'warning');
+      const card = document.getElementById(`account-card-${accountId}`);
+      if (card) card.remove();
+      loadAccounts();
+      return;
+    }
     if (res.ok) {
       showToast('Akun berhasil dihubungkan!', 'success');
       loadAccounts();
@@ -282,6 +289,14 @@ async function checkAccountHealth(accountId) {
     });
     const data = await res.json();
 
+    if (data.account_deleted || data.session_revoked) {
+      showToast(`⚠️ ${data.message || 'Sesi akun mati/ter-revoke dan telah otomatis dihapus dari dashboard.'}`, 'warning');
+      const card = document.getElementById(`account-card-${accountId}`);
+      if (card) card.remove();
+      loadAccounts();
+      return;
+    }
+
     if (badge) {
       if (data.status === 'clean') {
         badge.innerHTML = '<span style="color: var(--accent-green);">🟢 Clean / Normal</span>';
@@ -346,6 +361,50 @@ async function connectAllOfflineAccounts() {
     }
   }
 }
+
+async function cleanDeadSessions() {
+  const proceed = confirm(
+    "🧹 KONFIRMASI BERSIHKAN SESI MATI:\n\n" +
+    "Sistem akan memindai status seluruh akun Telegram Anda.\n" +
+    "Setiap akun yang sesinya terdeteksi MATI / TER-REVOKE oleh Telegram akan OTOMATIS DIHAPUS dari database dan dashboard.\n\n" +
+    "Lanjutkan pembersihan sesi mati?"
+  );
+  if (!proceed) return;
+
+  const btn = document.getElementById('clean-dead-sessions-btn');
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<div class="spinner" style="width:12px;height:12px;display:inline-block;margin-right:6px;"></div> Memindai sesi...';
+  }
+  showToast('Memeriksa status semua sesi akun untuk mencari sesi mati...', 'info');
+
+  try {
+    const res = await fetch('/api/accounts/clean-dead-sessions', {
+      method: 'POST',
+      headers: getAuthHeaders()
+    });
+    const data = await res.json();
+    if (res.ok && data.status === 'success') {
+      if (data.deleted_count > 0) {
+        showToast(`✓ Sukses! ${data.deleted_count} akun mati/ter-revoke berhasil dihapus dari dashboard.`, 'success');
+      } else {
+        showToast('✓ Tidak ada akun mati yang ditemukan. Seluruh akun masih sehat/aktif!', 'success');
+      }
+      loadAccounts();
+      if (window.loadSessionManagerAccounts) loadSessionManagerAccounts();
+    } else {
+      showToast(data.detail || data.message || 'Gagal membersihkan sesi mati', 'error');
+    }
+  } catch (err) {
+    showToast('Koneksi server gagal', 'error');
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = '🧹 Bersihkan Sesi Mati';
+    }
+  }
+}
+window.cleanDeadSessions = cleanDeadSessions;
 
 async function checkAllAccountsHealth() {
   const btn = document.getElementById('check-all-health-btn');
@@ -502,6 +561,14 @@ async function checkAccount2FA(accountId) {
       headers: getAuthHeaders()
     });
     const data = await res.json();
+
+    if (data.account_deleted || data.session_revoked) {
+      showToast(`⚠️ ${data.message || 'Sesi akun mati/ter-revoke dan telah otomatis dihapus dari dashboard.'}`, 'warning');
+      const card = document.getElementById(`account-card-${accountId}`);
+      if (card) card.remove();
+      loadAccounts();
+      return;
+    }
 
     if (badge) {
       if (data.status === 'success') {
@@ -847,6 +914,11 @@ document.addEventListener('DOMContentLoaded', () => {
   const connectAllOfflineBtn = document.getElementById('connect-all-offline-btn');
   if (connectAllOfflineBtn) {
     connectAllOfflineBtn.addEventListener('click', connectAllOfflineAccounts);
+  }
+
+  const cleanDeadSessionsBtn = document.getElementById('clean-dead-sessions-btn');
+  if (cleanDeadSessionsBtn) {
+    cleanDeadSessionsBtn.addEventListener('click', cleanDeadSessions);
   }
 
   const checkAllBtn = document.getElementById('check-all-health-btn');
@@ -1492,6 +1564,15 @@ async function fetchAccountOtp(accountId, isAuto = false) {
 
     if (!isAuto && refreshIcon) {
       refreshIcon.style.animation = '';
+    }
+
+    if (data.account_deleted || data.session_revoked) {
+      showToast(`⚠️ ${data.message || 'Sesi akun mati/ter-revoke dan telah otomatis dihapus dari dashboard.'}`, 'warning');
+      closeOtpModal();
+      const card = document.getElementById(`account-card-${accountId}`);
+      if (card) card.remove();
+      loadAccounts();
+      return;
     }
 
     if (res.ok && data.status === 'success') {
