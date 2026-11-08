@@ -2080,7 +2080,7 @@ async function loadSessionManagerAccounts() {
   container.innerHTML = '<div style="text-align: center; padding: 24px; color: var(--text-muted);"><div class="spinner" style="width:16px;height:16px;display:inline-block;margin-right:8px;"></div>Memuat daftar akun...</div>';
 
   try {
-    const res = await fetch('/api/accounts', { credentials: 'omit', headers: getAuthHeaders() });
+    const res = await fetch('/api/accounts?limit=1000', { credentials: 'omit', headers: getAuthHeaders() });
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
     cachedSessionAccounts = Array.isArray(data) ? data : (data.accounts || []);
@@ -2102,13 +2102,15 @@ function renderSessionManagerList() {
   const statusVal = document.getElementById('session-status-filter')?.value || 'all';
 
   const list = cachedSessionAccounts.filter(acc => {
-    if (statusVal === 'online' && !acc.is_connected) return false;
-    if (statusVal === 'offline' && acc.is_connected) return false;
+    const isOnline = !!acc.is_active;
+    if (statusVal === 'online' && !isOnline) return false;
+    if (statusVal === 'offline' && isOnline) return false;
     if (searchVal) {
-      const matchName = (acc.first_name || '').toLowerCase().includes(searchVal) || (acc.last_name || '').toLowerCase().includes(searchVal);
-      const matchPhone = (acc.phone || '').toLowerCase().includes(searchVal);
+      const matchName = (acc.display_name || '').toLowerCase().includes(searchVal);
+      const matchUsername = (acc.username || '').toLowerCase().includes(searchVal);
+      const matchPhone = (acc.phone_number || '').toLowerCase().includes(searchVal);
       const matchTgId = String(acc.telegram_id || '').includes(searchVal);
-      if (!matchName && !matchPhone && !matchTgId) return false;
+      if (!matchName && !matchUsername && !matchPhone && !matchTgId) return false;
     }
     return true;
   });
@@ -2120,9 +2122,11 @@ function renderSessionManagerList() {
 
   container.innerHTML = list.map(acc => {
     const isSelected = selectedSessionAccountIds.has(acc.id);
-    const isOnline = !!acc.is_connected;
-    const name = escapeHtml([acc.first_name, acc.last_name].filter(Boolean).join(' ') || 'Tanpa Nama');
-    const phone = escapeHtml(acc.phone || '-');
+    const isOnline = !!acc.is_active;
+    const name = escapeHtml(acc.display_name || (acc.username ? '@' + acc.username : '') || acc.phone_number || ('Akun #' + acc.id));
+    const phone = escapeHtml(acc.phone_number || '-');
+    const username = acc.username ? `<span style="color: var(--accent-cyan); font-size: 0.76rem;">@${escapeHtml(acc.username)}</span>` : '';
+    const tgId = acc.telegram_id ? `<span>TG ID: ${acc.telegram_id}</span>` : '';
     const statusBadge = isOnline 
       ? '<span style="display:inline-block; padding: 2px 8px; border-radius: 12px; font-size: 0.72rem; font-weight: 600; background: rgba(16,185,129,0.15); color: var(--accent-green); border: 1px solid rgba(16,185,129,0.3);">● Online</span>'
       : '<span style="display:inline-block; padding: 2px 8px; border-radius: 12px; font-size: 0.72rem; font-weight: 600; background: rgba(239,68,68,0.12); color: var(--accent-rose); border: 1px solid rgba(239,68,68,0.25);">○ Offline</span>';
@@ -2131,16 +2135,19 @@ function renderSessionManagerList() {
       <div class="session-item-row" style="display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: var(--radius-sm); transition: background 0.15s;">
         <div style="display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1;">
           <input type="checkbox" class="session-acc-chk" data-id="${acc.id}" ${isSelected ? 'checked' : ''} style="cursor: pointer; width: 16px; height: 16px; accent-color: var(--accent-cyan);">
-          <div style="width: 34px; height: 34px; border-radius: 50%; background: linear-gradient(135deg, rgba(6,182,212,0.2), rgba(168,85,247,0.2)); display: flex; align-items: center; justify-content: center; font-weight: 700; color: var(--accent-cyan); font-size: 0.85rem; flex-shrink: 0;">
+          <div style="width: 36px; height: 36px; border-radius: 50%; background: linear-gradient(135deg, rgba(6,182,212,0.2), rgba(168,85,247,0.2)); display: flex; align-items: center; justify-content: center; font-weight: 700; color: var(--accent-cyan); font-size: 0.88rem; flex-shrink: 0;">
             ${(name.charAt(0) || 'A').toUpperCase()}
           </div>
           <div style="min-width: 0;">
-            <div style="font-weight: 600; font-size: 0.86rem; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-              ${name}
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span style="font-weight: 600; font-size: 0.88rem; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                ${name}
+              </span>
+              ${username}
             </div>
-            <div style="font-size: 0.75rem; color: var(--text-muted); display: flex; gap: 8px; align-items: center;">
-              <span>${phone}</span>
-              ${acc.telegram_id ? `<span>ID: ${acc.telegram_id}</span>` : ''}
+            <div style="font-size: 0.76rem; color: var(--text-muted); display: flex; gap: 10px; align-items: center; margin-top: 2px; flex-wrap: wrap;">
+              <span style="color: var(--text-secondary); font-family: 'JetBrains Mono', monospace; font-weight: 500;">📞 ${phone}</span>
+              ${tgId}
               ${statusBadge}
             </div>
           </div>
@@ -2193,12 +2200,15 @@ function initSessionManagerView() {
       const searchVal = (document.getElementById('session-search-input')?.value || '').toLowerCase().trim();
       const statusVal = document.getElementById('session-status-filter')?.value || 'all';
       cachedSessionAccounts.forEach(acc => {
-        if (statusVal === 'online' && !acc.is_connected) return;
-        if (statusVal === 'offline' && acc.is_connected) return;
+        const isOnline = !!acc.is_active;
+        if (statusVal === 'online' && !isOnline) return;
+        if (statusVal === 'offline' && isOnline) return;
         if (searchVal) {
-          const matchName = (acc.first_name || '').toLowerCase().includes(searchVal) || (acc.last_name || '').toLowerCase().includes(searchVal);
-          const matchPhone = (acc.phone || '').toLowerCase().includes(searchVal);
-          if (!matchName && !matchPhone) return;
+          const matchName = (acc.display_name || '').toLowerCase().includes(searchVal);
+          const matchUsername = (acc.username || '').toLowerCase().includes(searchVal);
+          const matchPhone = (acc.phone_number || '').toLowerCase().includes(searchVal);
+          const matchTgId = String(acc.telegram_id || '').includes(searchVal);
+          if (!matchName && !matchUsername && !matchPhone && !matchTgId) return;
         }
         selectedSessionAccountIds.add(acc.id);
       });
@@ -2218,7 +2228,7 @@ function initSessionManagerView() {
   if (selectOnlineBtn) {
     selectOnlineBtn.addEventListener('click', () => {
       selectedSessionAccountIds.clear();
-      cachedSessionAccounts.filter(a => a.is_connected).forEach(a => selectedSessionAccountIds.add(a.id));
+      cachedSessionAccounts.filter(a => a.is_active).forEach(a => selectedSessionAccountIds.add(a.id));
       updateSessionSelectionCounter();
       renderSessionManagerList();
     });
