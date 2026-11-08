@@ -2119,11 +2119,13 @@ function renderSessionManagerList() {
     if (statusVal === 'online' && !isOnline) return false;
     if (statusVal === 'offline' && isOnline) return false;
 
-    // Filter by Telegram ID (prefix atau pencarian ID)
+    // Filter by Telegram ID (prefix awalan ID, atau multiple awalan dipisah koma)
     if (idFilterVal) {
       const tgIdStr = String(acc.telegram_id || '');
-      if (!tgIdStr.startsWith(idFilterVal) && !tgIdStr.includes(idFilterVal)) {
-        return false;
+      const prefixes = idFilterVal.split(',').map(s => s.trim().replace(/^#/, '')).filter(Boolean);
+      if (prefixes.length > 0) {
+        const matchesPrefix = prefixes.some(p => tgIdStr.startsWith(p));
+        if (!matchesPrefix) return false;
       }
     }
 
@@ -2249,13 +2251,15 @@ function initSessionManagerView() {
       const searchVal = (document.getElementById('session-search-input')?.value || '').toLowerCase().trim();
       const idFilterVal = (document.getElementById('session-id-filter')?.value || '').trim();
       const statusVal = document.getElementById('session-status-filter')?.value || 'all';
+      const prefixes = idFilterVal ? idFilterVal.split(',').map(s => s.trim().replace(/^#/, '')).filter(Boolean) : [];
+
       cachedSessionAccounts.forEach(acc => {
         const isOnline = !!acc.is_active;
         if (statusVal === 'online' && !isOnline) return;
         if (statusVal === 'offline' && isOnline) return;
-        if (idFilterVal) {
+        if (prefixes.length > 0) {
           const tgIdStr = String(acc.telegram_id || '');
-          if (!tgIdStr.startsWith(idFilterVal) && !tgIdStr.includes(idFilterVal)) return;
+          if (!prefixes.some(p => tgIdStr.startsWith(p))) return;
         }
         if (searchVal) {
           const matchName = (acc.display_name || '').toLowerCase().includes(searchVal);
@@ -2280,8 +2284,24 @@ function initSessionManagerView() {
 
   if (selectOnlineBtn) {
     selectOnlineBtn.addEventListener('click', () => {
-      selectedSessionAccountIds.clear();
-      cachedSessionAccounts.filter(a => a.is_active).forEach(a => selectedSessionAccountIds.add(a.id));
+      const searchVal = (document.getElementById('session-search-input')?.value || '').toLowerCase().trim();
+      const idFilterVal = (document.getElementById('session-id-filter')?.value || '').trim();
+      const prefixes = idFilterVal ? idFilterVal.split(',').map(s => s.trim().replace(/^#/, '')).filter(Boolean) : [];
+
+      cachedSessionAccounts.forEach(acc => {
+        if (!acc.is_active) return;
+        if (prefixes.length > 0) {
+          const tgIdStr = String(acc.telegram_id || '');
+          if (!prefixes.some(p => tgIdStr.startsWith(p))) return;
+        }
+        if (searchVal) {
+          const matchName = (acc.display_name || '').toLowerCase().includes(searchVal);
+          const matchUsername = (acc.username || '').toLowerCase().includes(searchVal);
+          const matchPhone = (acc.phone_number || '').toLowerCase().includes(searchVal);
+          if (!matchName && !matchUsername && !matchPhone) return;
+        }
+        selectedSessionAccountIds.add(acc.id);
+      });
       updateSessionSelectionCounter();
       renderSessionManagerList();
     });
