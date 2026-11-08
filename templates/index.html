@@ -1319,11 +1319,14 @@ Halo semuanya, selamat beraktivitas ya</textarea>
                   <button class="id-filter-clear-btn" id="session-id-clear-btn" title="Reset filter Telegram ID" style="display: none;">&times;</button>
                 </div>
 
-                <!-- Status Filter -->
-                <select id="session-status-filter" class="filter-select" style="padding: 6px 10px; font-size: 0.82rem;">
-                  <option value="all">Semua Status</option>
-                  <option value="online">Hanya Online</option>
-                  <option value="offline">Hanya Offline</option>
+                <!-- SpamBot Status Filter -->
+                <select id="session-status-filter" class="filter-select" style="padding: 6px 10px; font-size: 0.82rem; min-width: 140px;" title="Filter Status @SpamBot">
+                  <option value="all">Semua (@SpamBot)</option>
+                  <option value="perm_limited">🔴 Limit Permanen (Harsh)</option>
+                  <option value="temp_limited">🟡 Limit Sementara</option>
+                  <option value="clean">🟢 Clean / Normal</option>
+                  <option value="limited">⚠️ Semua Limited</option>
+                  <option value="unverified">❓ Belum Dicek</option>
                 </select>
 
                 <button type="button" class="btn btn-secondary btn-sm" id="session-reload-btn" title="Muat ulang daftar akun">

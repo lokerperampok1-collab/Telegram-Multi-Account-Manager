@@ -2140,12 +2140,15 @@ function renderSessionManagerList() {
     idClearBtn.style.display = idFilterVal ? 'block' : 'none';
   }
 
-  const statusVal = document.getElementById('session-status-filter')?.value || 'all';
+  const spambotVal = document.getElementById('session-status-filter')?.value || 'all';
 
   const list = cachedSessionAccounts.filter(acc => {
-    const isOnline = !!acc.is_active;
-    if (statusVal === 'online' && !isOnline) return false;
-    if (statusVal === 'offline' && isOnline) return false;
+    // Filter by SpamBot Status
+    if (spambotVal === 'perm_limited' && acc.spambot_status !== 'perm_limited') return false;
+    if (spambotVal === 'temp_limited' && acc.spambot_status !== 'temp_limited') return false;
+    if (spambotVal === 'clean' && acc.spambot_status !== 'clean') return false;
+    if (spambotVal === 'limited' && !['perm_limited', 'temp_limited', 'limited'].includes(acc.spambot_status)) return false;
+    if (spambotVal === 'unverified' && !!acc.spambot_status) return false;
 
     // Filter by Telegram ID (prefix awalan ID, atau multiple awalan dipisah koma)
     if (idFilterVal) {
@@ -2182,6 +2185,7 @@ function renderSessionManagerList() {
     const statusBadge = isOnline 
       ? '<span style="display:inline-block; padding: 2px 8px; border-radius: 12px; font-size: 0.72rem; font-weight: 600; background: rgba(16,185,129,0.15); color: var(--accent-green); border: 1px solid rgba(16,185,129,0.3);">● Online</span>'
       : '<span style="display:inline-block; padding: 2px 8px; border-radius: 12px; font-size: 0.72rem; font-weight: 600; background: rgba(239,68,68,0.12); color: var(--accent-rose); border: 1px solid rgba(239,68,68,0.25);">○ Offline</span>';
+    const spambotBadge = getSpambotBadgeHtml(acc);
 
     return `
       <div class="session-item-row" style="display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: var(--radius-sm); transition: background 0.15s;">
@@ -2200,6 +2204,7 @@ function renderSessionManagerList() {
             <div style="font-size: 0.76rem; color: var(--text-muted); display: flex; gap: 10px; align-items: center; margin-top: 2px; flex-wrap: wrap;">
               <span style="color: var(--text-secondary); font-family: 'JetBrains Mono', monospace; font-weight: 500;">📞 ${phone}</span>
               ${tgId}
+              <span style="cursor: pointer; display: inline-flex; align-items: center;" onclick="checkAccountHealth(${acc.id})" title="${escapeHtml(acc.spambot_message || 'Klik untuk cek status @SpamBot')}">${spambotBadge}</span>
               ${statusBadge}
             </div>
           </div>
@@ -2278,13 +2283,16 @@ function initSessionManagerView() {
     selectAllBtn.addEventListener('click', () => {
       const searchVal = (document.getElementById('session-search-input')?.value || '').toLowerCase().trim();
       const idFilterVal = (document.getElementById('session-id-filter')?.value || '').trim();
-      const statusVal = document.getElementById('session-status-filter')?.value || 'all';
+      const spambotVal = document.getElementById('session-status-filter')?.value || 'all';
       const prefixes = idFilterVal ? idFilterVal.split(',').map(s => s.trim().replace(/^#/, '')).filter(Boolean) : [];
 
       cachedSessionAccounts.forEach(acc => {
-        const isOnline = !!acc.is_active;
-        if (statusVal === 'online' && !isOnline) return;
-        if (statusVal === 'offline' && isOnline) return;
+        if (spambotVal === 'perm_limited' && acc.spambot_status !== 'perm_limited') return;
+        if (spambotVal === 'temp_limited' && acc.spambot_status !== 'temp_limited') return;
+        if (spambotVal === 'clean' && acc.spambot_status !== 'clean') return;
+        if (spambotVal === 'limited' && !['perm_limited', 'temp_limited', 'limited'].includes(acc.spambot_status)) return;
+        if (spambotVal === 'unverified' && !!acc.spambot_status) return;
+
         if (prefixes.length > 0) {
           const tgIdStr = String(acc.telegram_id || '');
           if (!prefixes.some(p => tgIdStr.startsWith(p))) return;
@@ -2314,10 +2322,17 @@ function initSessionManagerView() {
     selectOnlineBtn.addEventListener('click', () => {
       const searchVal = (document.getElementById('session-search-input')?.value || '').toLowerCase().trim();
       const idFilterVal = (document.getElementById('session-id-filter')?.value || '').trim();
+      const spambotVal = document.getElementById('session-status-filter')?.value || 'all';
       const prefixes = idFilterVal ? idFilterVal.split(',').map(s => s.trim().replace(/^#/, '')).filter(Boolean) : [];
 
       cachedSessionAccounts.forEach(acc => {
         if (!acc.is_active) return;
+        if (spambotVal === 'perm_limited' && acc.spambot_status !== 'perm_limited') return;
+        if (spambotVal === 'temp_limited' && acc.spambot_status !== 'temp_limited') return;
+        if (spambotVal === 'clean' && acc.spambot_status !== 'clean') return;
+        if (spambotVal === 'limited' && !['perm_limited', 'temp_limited', 'limited'].includes(acc.spambot_status)) return;
+        if (spambotVal === 'unverified' && !!acc.spambot_status) return;
+
         if (prefixes.length > 0) {
           const tgIdStr = String(acc.telegram_id || '');
           if (!prefixes.some(p => tgIdStr.startsWith(p))) return;
