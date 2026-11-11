@@ -2288,10 +2288,25 @@ class ClientManager:
         return export_nicegram_zip(data)
 
     async def import_session_string(self, user_id: int, session_str: str, twofa_password: Optional[str] = None) -> dict:
-        """Validates and imports a single StringSession into database."""
+        """Validates and imports a single StringSession into database (supports Telethon and AuthKey Hex:DC)."""
         s = session_str.strip()
         if not s:
             return {"status": "error", "message": "StringSession tidak boleh kosong"}
+
+        # Auto-convert raw AuthKey Hex:DC format (<512_hex>:<dc>)
+        if ':' in s and not s.startswith('1'):
+            parts = s.split(':')
+            if len(parts) == 2:
+                p1, p2 = parts[0].strip(), parts[1].strip()
+                from services.session_importer import hex_auth_key_to_string_session
+                if len(p1) == 512 and p2.isdigit():
+                    conv = hex_auth_key_to_string_session(p1, int(p2))
+                    if conv:
+                        s = conv
+                elif len(p2) == 512 and p1.isdigit():
+                    conv = hex_auth_key_to_string_session(p2, int(p1))
+                    if conv:
+                        s = conv
 
         try:
             api_id, api_hash = self._get_credentials()

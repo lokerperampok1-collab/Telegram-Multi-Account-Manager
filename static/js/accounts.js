@@ -804,7 +804,7 @@ async function checkAllAccounts2FA() {
 // ----------------- Export Sessions Logic -----------------
 
 let cachedExportAccounts = [];
-let selectedExportAccountIds = new Set();
+const selectedExportAccountIds = new Set();
 
 function updateExportFormatUI() {
   const nicegramRadio = document.getElementById('export-format-nicegram');
@@ -945,6 +945,11 @@ window.openExportModal = async function(defaultFormat = 'zip') {
   updateExportFormatUI();
 
   if (searchInput) searchInput.value = '';
+  const idFilter = document.getElementById('export-id-filter');
+  if (idFilter) idFilter.value = '';
+  const statusFilter = document.getElementById('export-status-filter');
+  if (statusFilter) statusFilter.value = 'all';
+
   if (modal) {
     modal.style.display = 'flex';
     modal.classList.add('active');
@@ -958,9 +963,10 @@ window.openExportModal = async function(defaultFormat = 'zip') {
     const res = await fetch('/api/accounts?limit=0', { headers: getAuthHeaders() });
     const data = await res.json();
     cachedExportAccounts = data.accounts || [];
-    // Default: pilih semua akun terlebih dahulu agar praktis, user tinggal uncheck atau klik Batal Semua lalu centang akun tertentu
-    selectedExportAccountIds = new Set(cachedExportAccounts.map(a => a.id));
+    // Reset seleksi ke 0 agar pengguna bisa memilih akun yang diinginkan (atau klik 'Pilih Semua' jika butuh semua)
+    selectedExportAccountIds.clear();
     renderExportChecklist(cachedExportAccounts);
+    updateExportCountBadge();
   } catch (e) {
     if (container) {
       container.innerHTML = '<div style="color: var(--accent-rose); font-size: 0.82rem; padding: 8px;">Gagal memuat daftar akun</div>';

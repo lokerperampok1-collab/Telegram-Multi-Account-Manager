@@ -97,14 +97,59 @@ def extract_string_from_session_bytes(session_bytes: bytes) -> str | None:
                 pass
     return None
 
+DC_DEFAULT_IPS = {
+    1: '149.154.175.53',
+    2: '149.154.167.51',
+    3: '149.154.175.100',
+    4: '149.154.167.91',
+    5: '91.108.56.130',
+}
+
+def hex_auth_key_to_string_session(hex_str: str, dc_id: int = 2) -> str | None:
+    """Converts a 256-byte (512 hex chars) auth key and DC into standard Telethon StringSession."""
+    try:
+        clean_hex = hex_str.strip()
+        if len(clean_hex) != 512:
+            return None
+        auth_key_bytes = bytes.fromhex(clean_hex)
+        ip_str = DC_DEFAULT_IPS.get(int(dc_id), '91.108.56.130')
+        return sqlite_to_string_session(int(dc_id), ip_str, 443, auth_key_bytes)
+    except Exception:
+        return None
+
 def extract_strings_from_text(content_str: str) -> List[str]:
-    """Finds all Telethon StringSessions inside text content."""
+    """Finds all Telethon StringSessions inside text content, including hex_key:dc format."""
     results = []
     # 1. Line by line clean matching
     for line in content_str.splitlines():
         cleaned = line.strip().strip('"\' ,;{}[]')
+        if not cleaned:
+            continue
+        # Standard Telethon StringSession
         if cleaned.startswith('1') and len(cleaned) >= 200 and ' ' not in cleaned:
             results.append(cleaned)
+            continue
+        # Raw AuthKey Hex format: <512_hex_chars>:<dc_id> or <dc_id>:<512_hex_chars>
+        if ':' in cleaned:
+            parts = cleaned.split(':')
+            if len(parts) == 2:
+                p1, p2 = parts[0].strip(), parts[1].strip()
+                if len(p1) == 512 and p2.isdigit():
+                    s = hex_auth_key_to_string_session(p1, int(p2))
+                    if s:
+                        results.append(s)
+                        continue
+                elif len(p2) == 512 and p1.isdigit():
+                    s = hex_auth_key_to_string_session(p2, int(p1))
+                    if s:
+                        results.append(s)
+                        continue
+        # Bare 512 hex chars without DC (default to DC 5)
+        if len(cleaned) == 512 and re.fullmatch(r'[0-9a-fA-F]{512}', cleaned):
+            s = hex_auth_key_to_string_session(cleaned, 5)
+            if s:
+                results.append(s)
+                continue
 
     # 2. Fallback regex search for embedded strings
     if not results:
