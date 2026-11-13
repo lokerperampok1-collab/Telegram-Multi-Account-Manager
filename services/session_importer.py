@@ -8,8 +8,13 @@ import zipfile
 import tempfile
 import ipaddress
 import logging
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 from telethon.sessions import SQLiteSession, StringSession
+
+try:
+    import pyzipper
+except ImportError:
+    pyzipper = None
 
 logger = logging.getLogger(__name__)
 
@@ -159,11 +164,26 @@ def extract_strings_from_text(content_str: str) -> List[str]:
     # Remove duplicates preserving order
     return list(dict.fromkeys(results))
 
-def extract_sessions_from_zip(zip_bytes: bytes) -> List[Tuple[str, str]]:
-    """Extracts all .session, .txt, .json, and Nicegram tgnet.dat files found inside a ZIP archive."""
+def _read_zip_entry(zf, name: str, pwd_bytes: Optional[bytes]) -> bytes:
+    """Reads a ZIP entry, applying pwd_bytes if the entry is encrypted."""
+    is_encrypted = bool(zf.getinfo(name).flag_bits & 0x1)
+    if is_encrypted and pwd_bytes:
+        return zf.read(name, pwd=pwd_bytes)
+    if pwd_bytes:
+        try:
+            return zf.read(name)
+        except RuntimeError:
+            return zf.read(name, pwd=pwd_bytes)
+    return zf.read(name)
+
+
+def extract_sessions_from_zip(zip_bytes: bytes, zip_password: Optional[str] = None) -> List[Tuple[str, str]]:
+    """Extracts all .session, .txt, .json, and Nicegram tgnet.dat files found inside a ZIP archive (supports AES/ZipCrypto)."""
     extracted = []
+    pwd_bytes = zip_password.encode('utf-8') if zip_password else None
+    zip_cls = pyzipper.AESZipFile if pyzipper is not None else zipfile.ZipFile
     try:
-        with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
+        with zip_cls(io.BytesIO(zip_bytes)) as zf:
             namelist = zf.namelist()
             # First, check for Nicegram tgnet.dat files
             nicegram_folders = set()
@@ -174,7 +194,7 @@ def extract_sessions_from_zip(zip_bytes: bytes) -> List[Tuple[str, str]]:
                 if lower_name.endswith('tgnet.dat'):
                     try:
                         from services.nicegram_converter import extract_session_from_nicegram_tgnet
-                        file_bytes = zf.read(name)
+                        file_bytes = _read_zip_entry(zf, name, pwd_bytes)
                         s = extract_session_from_nicegram_tgnet(file_bytes)
                         if s:
                             # Try to find associated session.json in the same folder
@@ -184,7 +204,7 @@ def extract_sessions_from_zip(zip_bytes: bytes) -> List[Tuple[str, str]]:
                             json_path = os.path.join(parent_dir, "session.json").replace("\\", "/")
                             if json_path in namelist:
                                 try:
-                                    j_bytes = zf.read(json_path)
+                                    j_bytes = _read_zip_entry(zf, json_path, pwd_bytes)
                                     j_data = json.loads(j_bytes.decode('utf-8', errors='ignore'))
                                     acc_name = j_data.get("name") or ""
                                     acc_id = j_data.get("id") or ""
@@ -209,7 +229,11 @@ def extract_sessions_from_zip(zip_bytes: bytes) -> List[Tuple[str, str]]:
                 if parent_dir in nicegram_folders:
                     continue
 
-                file_bytes = zf.read(name)
+                try:
+                    file_bytes = _read_zip_entry(zf, name, pwd_bytes)
+                except Exception as e:
+                    logger.warning(f"Error reading ZIP entry ({name}): {e}")
+                    continue
                 lower_name = name.lower()
                 clean_name = os.path.basename(name) or name
                 if lower_name.endswith('.session'):
@@ -229,14 +253,14 @@ def extract_sessions_from_zip(zip_bytes: bytes) -> List[Tuple[str, str]]:
         logger.warning(f"Error parsing ZIP session archive: {e}")
     return extracted
 
-def extract_sessions_from_file(filename: str, file_bytes: bytes) -> List[Tuple[str, str]]:
+def extract_sessions_from_file(filename: str, file_bytes: bytes, zip_password: Optional[str] = None) -> List[Tuple[str, str]]:
     """Universal parser that extracts list of (source_label, session_string) from any file type."""
     lower = filename.lower()
     clean_name = os.path.basename(filename) or filename
 
     # 1. ZIP Archive containing sessions (Telethon or Nicegram)
     if lower.endswith('.zip'):
-        return extract_sessions_from_zip(file_bytes)
+        return extract_sessions_from_zip(file_bytes, zip_password=zip_password)
 
     # 2. Nicegram binary session (tgnet.dat)
     if lower.endswith('tgnet.dat') or lower.endswith('.dat'):

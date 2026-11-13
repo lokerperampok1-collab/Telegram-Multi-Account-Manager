@@ -2389,7 +2389,7 @@ class ClientManager:
 
         all_extracted = []
         for filename, content in files_data:
-            extracted = extract_sessions_from_file(filename, content)
+            extracted = extract_sessions_from_file(filename, content, zip_password=effective_twofa)
             all_extracted.extend(extracted)
 
         if not all_extracted:
