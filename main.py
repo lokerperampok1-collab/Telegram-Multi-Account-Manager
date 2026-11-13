@@ -8,7 +8,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from config import settings
 from database.db import init_db
 from services.client_manager import client_manager
-from routes import auth, accounts, telegram
+from routes import auth, accounts, telegram, transfer
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -44,6 +44,7 @@ templates = Jinja2Templates(directory="templates")
 app.include_router(auth.router, prefix="/api/auth", tags=["Auth"])
 app.include_router(accounts.router, prefix="/api/accounts", tags=["Accounts"])
 app.include_router(telegram.router, prefix="/api/telegram", tags=["Telegram"])
+app.include_router(transfer.router, prefix="/api/transfer", tags=["Transfer"])
 
 # Frontend web views
 @app.get("/", response_class=HTMLResponse)

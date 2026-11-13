@@ -129,6 +129,8 @@ document.addEventListener('DOMContentLoaded', () => {
           }
         } else if (targetViewId === 'view-session-manager') {
           if (window.loadSessionManagerAccounts) window.loadSessionManagerAccounts();
+        } else if (targetViewId === 'view-transfer-session') {
+          if (window.loadTransferAccounts) window.loadTransferAccounts();
         }
 
         // Scroll smoothly to top

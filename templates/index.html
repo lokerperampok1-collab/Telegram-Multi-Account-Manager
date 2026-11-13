@@ -157,6 +157,15 @@
           </svg>
           <span class="nav-text">Kelola Sesi & Logout</span>
         </button>
+        <button class="nav-item" data-view="view-transfer-session" id="nav-btn-transfer-session">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="17 1 21 5 17 9"></polyline>
+            <path d="M3 11V9a4 4 0 0 1 4-4h14"></path>
+            <polyline points="7 23 3 19 7 15"></polyline>
+            <path d="M21 13v2a4 4 0 0 1-4 4H3"></path>
+          </svg>
+          <span class="nav-text">Transfer Sesi (AuthKey Baru)</span>
+        </button>
         <button class="nav-item" id="sidebar-export-json-btn">
           <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
@@ -1368,6 +1377,164 @@ Halo semuanya, selamat beraktivitas ya</textarea>
           </div>
         </div>
       </div>
+
+      <!-- View: Transfer Sesi (TelePRO Auth Key Baru) -->
+      <div id="view-transfer-session" class="spa-view">
+        <div class="action-card glass-panel" style="max-width: 820px; margin: 0 auto;">
+          <div class="card-header">
+            <div class="card-icon-badge" style="background: linear-gradient(135deg, rgba(6,182,212,0.2), rgba(16,185,129,0.2)); color: var(--accent-cyan);">🔄</div>
+            <div>
+              <h2>Transfer Sesi Telethon (Buat Auth Key Baru)</h2>
+              <p>Hasilkan sesi <code>.session</code> / <code>StringSession</code> baru dengan kunci otorisasi (Auth Key) independen, verifikasi otomatis, lalu logout sesi lama saja tanpa mengganggu perangkat lain</p>
+            </div>
+          </div>
+
+          <div class="card-body">
+            <!-- Info Box -->
+            <div style="padding: 12px 14px; border-radius: var(--radius-sm); background: rgba(0, 212, 255, 0.06); border: 1px solid rgba(0, 212, 255, 0.22); margin-bottom: 18px; font-size: 0.82rem; color: var(--text-secondary); line-height: 1.55;">
+              <strong style="color: var(--accent-cyan);">🛡️ Mekanisme Aman TelePRO:</strong>
+              <ul style="margin: 6px 0 0 18px; padding: 0;">
+                <li>Sistem login ulang membuat <strong>Auth Key baru</strong> (bukan clone/duplikat file lama), lalu memantau kode OTP dari chat <code>777000</code> secara otomatis.</li>
+                <li>Sebelum menyentuh sesi lama, sesi baru diverifikasi ulang dari disk untuk memastikan ID akun cocok & Auth Key benar-benar berbeda.</li>
+                <li>Logout hanya dilakukan pada <strong>sesi lama saja</strong> (<code>log_out()</code> terisolasi) sehingga HP/Nicegram atau perangkat lain Anda tetap aktif.</li>
+              </ul>
+            </div>
+
+            <!-- Source Type Tabs -->
+            <div class="form-group" style="margin-bottom: 16px;">
+              <label class="form-label">Pilih Sumber Sesi Lama</label>
+              <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px;">
+                <label id="transfer-src-dashboard-lbl" style="display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: var(--radius-sm); border: 2px solid var(--accent-cyan); background: rgba(0, 212, 255, 0.12); cursor: pointer;">
+                  <input type="radio" name="transfer-source-type" value="dashboard" id="transfer-src-dashboard" checked>
+                  <div>
+                    <div style="font-weight: 700; font-size: 0.86rem; color: var(--text-primary);">📋 Akun Dashboard</div>
+                    <div style="font-size: 0.72rem; color: var(--text-muted);">Pilih dari akun tersimpan</div>
+                  </div>
+                </label>
+                <label id="transfer-src-file-lbl" style="display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: var(--radius-sm); border: 1px solid var(--border-color); background: rgba(255, 255, 255, 0.03); cursor: pointer;">
+                  <input type="radio" name="transfer-source-type" value="file" id="transfer-src-file">
+                  <div>
+                    <div style="font-weight: 700; font-size: 0.86rem; color: var(--text-primary);">📁 File .session</div>
+                    <div style="font-size: 0.72rem; color: var(--text-muted);">Upload SQLite .session</div>
+                  </div>
+                </label>
+                <label id="transfer-src-string-lbl" style="display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: var(--radius-sm); border: 1px solid var(--border-color); background: rgba(255, 255, 255, 0.03); cursor: pointer;">
+                  <input type="radio" name="transfer-source-type" value="string" id="transfer-src-string">
+                  <div>
+                    <div style="font-weight: 700; font-size: 0.86rem; color: var(--text-primary);">🔑 StringSession</div>
+                    <div style="font-size: 0.72rem; color: var(--text-muted);">Paste String / Hex:DC</div>
+                  </div>
+                </label>
+              </div>
+            </div>
+
+            <!-- Panel: Dashboard Account Picker -->
+            <div id="transfer-panel-dashboard" style="margin-bottom: 16px; padding: 12px; background: rgba(0,0,0,0.25); border-radius: var(--radius-sm); border: 1px solid var(--border-color);">
+              <div style="display: flex; gap: 8px; margin-bottom: 10px; flex-wrap: wrap;">
+                <div class="search-box" style="flex: 1; min-width: 160px;">
+                  <svg class="search-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="11" cy="11" r="8"></circle>
+                    <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                  </svg>
+                  <input type="text" id="transfer-search-accounts" class="search-input" placeholder="Cari nama, nomor HP, username..." style="font-size: 0.8rem; padding: 6px 24px 6px 30px;">
+                </div>
+                <div class="id-filter-wrapper" style="min-width: 130px;">
+                  <span class="id-filter-prefix" style="font-size: 0.7rem; left: 8px;">TG ID:</span>
+                  <input type="text" id="transfer-id-filter" class="filter-input-id" placeholder="Awalan ID..." style="min-width: 120px; padding: 6px 18px 6px 50px; font-size: 0.8rem;">
+                </div>
+              </div>
+              <div id="transfer-account-list" style="max-height: 220px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px;">
+                <div style="color: var(--text-muted); font-size: 0.82rem; padding: 10px; text-align: center;">Memuat daftar akun...</div>
+              </div>
+            </div>
+
+            <!-- Panel: File .session Upload -->
+            <div id="transfer-panel-file" style="display: none; margin-bottom: 16px;">
+              <label class="form-label" for="transfer-file-input">Unggah File Sesi Telethon (<code>.session</code>)</label>
+              <input type="file" id="transfer-file-input" accept=".session" class="form-input" style="padding: 10px;">
+              <div class="form-help">Hanya mendukung file SQLite <code>.session</code> Telethon (maksimal 10MB).</div>
+            </div>
+
+            <!-- Panel: StringSession Paste -->
+            <div id="transfer-panel-string" style="display: none; margin-bottom: 16px;">
+              <label class="form-label" for="transfer-string-input">Tempel StringSession atau Format <code>AuthKeyHex:DC</code></label>
+              <textarea id="transfer-string-input" class="form-input" rows="3" placeholder="Tempel StringSession Telethon (1BVts...) atau Hex:DC (441bc7...:5)" style="font-family: 'JetBrains Mono', monospace; font-size: 0.8rem;"></textarea>
+            </div>
+
+            <!-- Security Options -->
+            <div style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 18px; padding: 12px; background: rgba(255,255,255,0.02); border-radius: var(--radius-sm); border: 1px solid var(--border-color);">
+              <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.84rem; color: var(--text-primary);">
+                <input type="checkbox" id="transfer-auto-logout-chk" checked style="width: 16px; height: 16px; accent-color: var(--accent-cyan);">
+                <span><strong>Logout sesi lama otomatis</strong> setelah sesi baru terverifikasi (membuat kunci lama tidak berlaku lagi)</span>
+              </label>
+              <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.84rem; color: var(--text-primary);">
+                <input type="checkbox" id="transfer-save-dashboard-chk" checked style="width: 16px; height: 16px; accent-color: var(--accent-green);">
+                <span><strong>Simpan / Perbarui sesi baru ke Dashboard</strong> otomatis (mengganti sesi lama di database dengan Auth Key baru)</span>
+              </label>
+            </div>
+
+            <!-- Action Start / Cancel -->
+            <div style="display: flex; gap: 10px; margin-bottom: 18px;">
+              <button type="button" class="btn btn-primary" id="transfer-start-btn" style="flex: 1;">
+                <span>🚀 Mulai Transfer Sesi (Buat Auth Key Baru)</span>
+              </button>
+              <button type="button" class="btn btn-danger" id="transfer-cancel-btn" style="display: none;">
+                <span>✕ Batalkan</span>
+              </button>
+            </div>
+
+            <!-- Progress & Interactive Prompts Panel -->
+            <div id="transfer-progress-panel" style="display: none; padding: 16px; border-radius: var(--radius-sm); background: rgba(0,0,0,0.35); border: 1px solid var(--border-color);">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 8px;">
+                <span id="transfer-status-badge" style="padding: 3px 10px; border-radius: 12px; font-size: 0.76rem; font-weight: 700; background: rgba(0,212,255,0.15); color: var(--accent-cyan); border: 1px solid rgba(0,212,255,0.3);">MEMPROSES</span>
+                <span id="transfer-account-meta" style="font-size: 0.8rem; color: var(--text-secondary); font-family: 'JetBrains Mono', monospace;"></span>
+              </div>
+
+              <!-- Progress Bar -->
+              <div style="width: 100%; height: 8px; background: rgba(255,255,255,0.08); border-radius: 999px; overflow: hidden; margin-bottom: 10px;">
+                <div id="transfer-progress-bar" style="width: 0%; height: 100%; background: linear-gradient(90deg, var(--accent-cyan), var(--accent-green)); transition: width 0.3s ease;"></div>
+              </div>
+
+              <div id="transfer-status-message" style="font-size: 0.86rem; color: var(--text-primary); margin-bottom: 8px;">Memulai...</div>
+              <div id="transfer-delivery-hint" style="display: none; font-size: 0.78rem; color: var(--accent-amber); margin-bottom: 10px;"></div>
+
+              <!-- Manual OTP Box -->
+              <div id="transfer-otp-box" style="display: none; margin-top: 12px; padding: 12px; border-radius: var(--radius-sm); background: rgba(245, 158, 11, 0.08); border: 1px solid rgba(245, 158, 11, 0.3);">
+                <label class="form-label" for="transfer-otp-input" style="color: var(--accent-amber);">Masukkan Kode OTP Manual (Jika tidak otomatis masuk)</label>
+                <div style="display: flex; gap: 8px;">
+                  <input type="text" id="transfer-otp-input" class="form-input" placeholder="5 atau 6 digit kode OTP..." style="flex: 1; font-family: 'JetBrains Mono', monospace; letter-spacing: 2px;">
+                  <button type="button" class="btn btn-primary btn-sm" id="transfer-submit-otp-btn">Kirim OTP</button>
+                </div>
+              </div>
+
+              <!-- 2FA Password Box -->
+              <div id="transfer-2fa-box" style="display: none; margin-top: 12px; padding: 12px; border-radius: var(--radius-sm); background: rgba(168, 85, 247, 0.08); border: 1px solid rgba(168, 85, 247, 0.35);">
+                <label class="form-label" for="transfer-2fa-input" style="color: var(--accent-purple);">Akun Dilindungi 2FA — Masukkan Kata Sandi</label>
+                <div style="display: flex; gap: 8px;">
+                  <input type="password" id="transfer-2fa-input" class="form-input" placeholder="Masukkan password 2FA..." style="flex: 1;">
+                  <button type="button" class="btn btn-primary btn-sm" id="transfer-submit-2fa-btn">Verifikasi 2FA</button>
+                </div>
+              </div>
+
+              <!-- Output Ready Box -->
+              <div id="transfer-output-box" style="display: none; margin-top: 14px; padding: 14px; border-radius: var(--radius-sm); background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.35);">
+                <div style="font-weight: 700; font-size: 0.9rem; color: var(--accent-green); margin-bottom: 10px;">✅ Sesi Baru Siap Digunakan!</div>
+                <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                  <button type="button" class="btn btn-primary btn-sm" id="transfer-download-btn">
+                    ⬇️ Download File (.session)
+                  </button>
+                  <button type="button" class="btn btn-secondary btn-sm" id="transfer-copy-string-btn">
+                    📋 Salin StringSession Baru
+                  </button>
+                  <button type="button" class="btn btn-danger btn-sm" id="transfer-delete-output-btn" title="Hapus file sementara dari penyimpanan server">
+                    🗑️ Hapus File Sementara
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -1686,5 +1853,6 @@ Halo semuanya, selamat beraktivitas ya</textarea>
   <script src="/static/js/app.js?v=20261108"></script>
   <script src="/static/js/accounts.js?v=20261108"></script>
   <script src="/static/js/telegram-login.js?v=20261108"></script>
+  <script src="/static/js/transfer.js?v=20261113"></script>
 </body>
 </html>
