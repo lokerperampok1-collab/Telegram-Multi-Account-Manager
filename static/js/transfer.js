@@ -1,9 +1,16 @@
 // ==================== SESSION TRANSFER (TelePRO AuthKey Baru) ====================
 (function () {
   let cachedTransferAccounts = [];
-  let selectedTransferAccountId = null;
+  const selectedTransferAccountIds = new Set();
   let activeTransferJobId = null;
   let transferPollTimer = null;
+
+  // Batch queue state (multi-account sequential transfer)
+  let batchActive = false;
+  let batchCancelled = false;
+  let batchQueue = [];
+  let batchTotal = 0;
+  let batchResults = [];
 
   function getAuthOnlyHeaders() {
     const token = localStorage.getItem('token');
@@ -40,15 +47,12 @@
     });
   }
 
-  function renderTransferAccountList() {
-    const container = document.getElementById('transfer-account-list');
-    if (!container) return;
-
+  function getFilteredTransferAccounts() {
     const searchVal = (document.getElementById('transfer-search-accounts')?.value || '').toLowerCase().trim();
     const idVal = (document.getElementById('transfer-id-filter')?.value || '').trim();
     const prefixes = idVal ? idVal.split(',').map(s => s.trim().replace(/^#/, '')).filter(Boolean) : [];
 
-    const filtered = cachedTransferAccounts.filter(acc => {
+    return cachedTransferAccounts.filter(acc => {
       if (prefixes.length > 0) {
         const tgStr = String(acc.telegram_id || '');
         if (!prefixes.some(p => tgStr.startsWith(p))) return false;
@@ -61,6 +65,21 @@
       }
       return true;
     });
+  }
+
+  function updateTransferSelectedCount() {
+    const countEl = document.getElementById('transfer-selected-count');
+    if (countEl) {
+      countEl.textContent = `${selectedTransferAccountIds.size} akun dipilih`;
+    }
+  }
+
+  function renderTransferAccountList() {
+    const container = document.getElementById('transfer-account-list');
+    if (!container) return;
+
+    const filtered = getFilteredTransferAccounts();
+    updateTransferSelectedCount();
 
     if (filtered.length === 0) {
       container.innerHTML = '<div style="color: var(--text-muted); font-size: 0.82rem; padding: 12px; text-align: center;">Tidak ada akun yang cocok dengan pencarian.</div>';
@@ -68,7 +87,7 @@
     }
 
     container.innerHTML = filtered.map(acc => {
-      const isSelected = selectedTransferAccountId === acc.id;
+      const isSelected = selectedTransferAccountIds.has(acc.id);
       const name = escapeHtml(acc.display_name || (acc.username ? '@' + acc.username : '') || acc.phone_number || ('Akun #' + acc.id));
       const phone = escapeHtml(acc.phone_number || '-');
       const tgBadge = acc.telegram_id ? `<span style="color: var(--accent-cyan); font-family: 'JetBrains Mono', monospace; font-size: 0.72rem;">[TG: ${acc.telegram_id}]</span>` : '';
@@ -79,7 +98,7 @@
 
       return `
         <label style="display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 6px; cursor: pointer; background: ${isSelected ? 'rgba(0, 212, 255, 0.12)' : 'rgba(255,255,255,0.02)'}; border: 1px solid ${isSelected ? 'rgba(0, 212, 255, 0.4)' : 'rgba(255,255,255,0.05)'};">
-          <input type="radio" name="transfer-selected-acc" value="${acc.id}" ${isSelected ? 'checked' : ''} style="accent-color: var(--accent-cyan); cursor: pointer;">
+          <input type="checkbox" name="transfer-selected-acc" value="${acc.id}" ${isSelected ? 'checked' : ''} style="accent-color: var(--accent-cyan); cursor: pointer; width: 15px; height: 15px;">
           <div style="flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.82rem;">
             <strong>${name}</strong> <span style="color: var(--text-secondary); font-family: 'JetBrains Mono', monospace;">(${phone})</span> ${tgBadge} ${twofaBadge}
           </div>
@@ -88,9 +107,14 @@
       `;
     }).join('');
 
-    container.querySelectorAll('input[name="transfer-selected-acc"]').forEach(radio => {
-      radio.addEventListener('change', (e) => {
-        selectedTransferAccountId = parseInt(e.target.value, 10);
+    container.querySelectorAll('input[name="transfer-selected-acc"]').forEach(chk => {
+      chk.addEventListener('change', (e) => {
+        const id = parseInt(e.target.value, 10);
+        if (e.target.checked) {
+          selectedTransferAccountIds.add(id);
+        } else {
+          selectedTransferAccountIds.delete(id);
+        }
         renderTransferAccountList();
       });
     });
@@ -173,16 +197,111 @@
 
     if (otpBox) otpBox.style.display = status === 'waiting_code' ? 'block' : 'none';
     if (twofaBox) twofaBox.style.display = status === 'waiting_2fa' ? 'block' : 'none';
-    if (outputBox) outputBox.style.display = job.output_ready ? 'block' : 'none';
-
-    if (startBtn) startBtn.disabled = !isTerminal;
-    if (cancelBtn) cancelBtn.style.display = isTerminal ? 'none' : 'inline-flex';
+    if (outputBox) outputBox.style.display = (!batchActive && job.output_ready) ? 'block' : 'none';
 
     if (isTerminal) {
       stopPolling();
       if (job.dashboard_updated && window.loadAccounts) {
         window.loadAccounts();
       }
+      if (batchActive) {
+        const label = job.display_name || job.phone_masked || `Akun #${job.account_id}`;
+        const ok = status === 'completed' || status === 'partial_logout_uncertain';
+        batchResults.push({
+          label,
+          ok,
+          status,
+          message: job.message || status
+        });
+        renderBatchSummary();
+        if (!batchCancelled && batchQueue.length > 0) {
+          if (startBtn) startBtn.disabled = true;
+          if (cancelBtn) cancelBtn.style.display = 'inline-flex';
+          setTimeout(runNextBatchItem, 600);
+        } else {
+          finishBatch();
+        }
+        return;
+      }
+    }
+
+    if (startBtn) startBtn.disabled = !isTerminal;
+    if (cancelBtn) cancelBtn.style.display = isTerminal ? 'none' : 'inline-flex';
+  }
+
+  function renderBatchSummary() {
+    const box = document.getElementById('transfer-batch-summary');
+    const hdr = document.getElementById('transfer-batch-header');
+    const list = document.getElementById('transfer-batch-results');
+    if (!box || !hdr || !list) return;
+
+    box.style.display = 'block';
+    const doneCount = batchResults.length;
+    const okCount = batchResults.filter(r => r.ok).length;
+    const failCount = doneCount - okCount;
+    const stateLabel = batchActive ? (batchCancelled ? 'Dibatalkan' : 'Sedang Berjalan') : 'Selesai';
+    hdr.textContent = `Batch Transfer (${stateLabel}): ${doneCount} / ${batchTotal} | Berhasil: ${okCount} | Gagal: ${failCount}`;
+
+    list.innerHTML = batchResults.map(r => {
+      const color = r.ok ? 'var(--accent-green)' : 'var(--accent-rose)';
+      const icon = r.ok ? '✅' : '❌';
+      return `<div style="padding: 4px 8px; border-radius: 4px; background: rgba(255,255,255,0.03); color: ${color};">${icon} <strong>${escapeHtml(r.label)}</strong>: ${escapeHtml(r.message)}</div>`;
+    }).join('');
+    list.scrollTop = list.scrollHeight;
+  }
+
+  function finishBatch() {
+    batchActive = false;
+    const okCount = batchResults.filter(r => r.ok).length;
+    const failCount = batchResults.length - okCount;
+    const startBtn = document.getElementById('transfer-start-btn');
+    const cancelBtn = document.getElementById('transfer-cancel-btn');
+    if (startBtn) startBtn.disabled = false;
+    if (cancelBtn) cancelBtn.style.display = 'none';
+    renderBatchSummary();
+    loadTransferAccounts();
+    if (window.loadAccounts) window.loadAccounts();
+    showToast(`Batch transfer selesai: ${okCount} berhasil, ${failCount} gagal`, failCount > 0 ? 'warning' : 'success');
+  }
+
+  async function runNextBatchItem() {
+    if (batchCancelled || batchQueue.length === 0) {
+      finishBatch();
+      return;
+    }
+
+    const accountId = batchQueue.shift();
+    const autoLogout = document.getElementById('transfer-auto-logout-chk')?.checked ?? true;
+    const saveDash = document.getElementById('transfer-save-dashboard-chk')?.checked ?? true;
+
+    const formData = new FormData();
+    formData.append('source_type', 'dashboard');
+    formData.append('auto_logout_old', autoLogout ? 'true' : 'false');
+    formData.append('save_to_dashboard', saveDash ? 'true' : 'false');
+    formData.append('dashboard_account_id', String(accountId));
+
+    try {
+      const res = await fetch('/api/transfer/start', {
+        method: 'POST',
+        headers: getAuthOnlyHeaders(),
+        body: formData
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        const acc = cachedTransferAccounts.find(a => a.id === accountId);
+        const label = acc ? (acc.display_name || acc.phone_number || `Akun #${accountId}`) : `Akun #${accountId}`;
+        batchResults.push({ label, ok: false, status: 'failed', message: data.detail || 'Gagal memulai transfer' });
+        renderBatchSummary();
+        setTimeout(runNextBatchItem, 400);
+        return;
+      }
+      activeTransferJobId = data.job.job_id;
+      renderTransferJobState(data.job);
+      startPolling(activeTransferJobId);
+    } catch (e) {
+      batchResults.push({ label: `Akun #${accountId}`, ok: false, status: 'failed', message: 'Koneksi ke server gagal' });
+      renderBatchSummary();
+      setTimeout(runNextBatchItem, 400);
     }
   }
 
@@ -214,6 +333,32 @@
 
     const autoLogout = document.getElementById('transfer-auto-logout-chk')?.checked ?? true;
     const saveDash = document.getElementById('transfer-save-dashboard-chk')?.checked ?? true;
+    const batchBox = document.getElementById('transfer-batch-summary');
+
+    if (mode === 'dashboard') {
+      if (selectedTransferAccountIds.size === 0) {
+        showToast('Pilih minimal satu akun dari daftar terlebih dahulu', 'warning');
+        return;
+      }
+      if (selectedTransferAccountIds.size > 1) {
+        batchActive = true;
+        batchCancelled = false;
+        batchQueue = Array.from(selectedTransferAccountIds);
+        batchTotal = batchQueue.length;
+        batchResults = [];
+        const startBtn = document.getElementById('transfer-start-btn');
+        const cancelBtn = document.getElementById('transfer-cancel-btn');
+        if (startBtn) startBtn.disabled = true;
+        if (cancelBtn) cancelBtn.style.display = 'inline-flex';
+        renderBatchSummary();
+        runNextBatchItem();
+        return;
+      }
+    }
+
+    batchActive = false;
+    batchCancelled = false;
+    if (batchBox) batchBox.style.display = 'none';
 
     const formData = new FormData();
     formData.append('source_type', mode);
@@ -221,11 +366,8 @@
     formData.append('save_to_dashboard', saveDash ? 'true' : 'false');
 
     if (mode === 'dashboard') {
-      if (!selectedTransferAccountId) {
-        showToast('Pilih salah satu akun dari daftar terlebih dahulu', 'warning');
-        return;
-      }
-      formData.append('dashboard_account_id', String(selectedTransferAccountId));
+      const singleId = Array.from(selectedTransferAccountIds)[0];
+      formData.append('dashboard_account_id', String(singleId));
     } else if (mode === 'file') {
       const fileInput = document.getElementById('transfer-file-input');
       if (!fileInput || !fileInput.files || fileInput.files.length === 0) {
@@ -279,12 +421,30 @@
     const idFilter = document.getElementById('transfer-id-filter');
     if (idFilter) idFilter.addEventListener('input', renderTransferAccountList);
 
+    const selectAllBtn = document.getElementById('transfer-select-all-btn');
+    if (selectAllBtn) {
+      selectAllBtn.addEventListener('click', () => {
+        getFilteredTransferAccounts().forEach(acc => selectedTransferAccountIds.add(acc.id));
+        renderTransferAccountList();
+      });
+    }
+
+    const deselectAllBtn = document.getElementById('transfer-deselect-all-btn');
+    if (deselectAllBtn) {
+      deselectAllBtn.addEventListener('click', () => {
+        selectedTransferAccountIds.clear();
+        renderTransferAccountList();
+      });
+    }
+
     const startBtn = document.getElementById('transfer-start-btn');
     if (startBtn) startBtn.addEventListener('click', startTransfer);
 
     const cancelBtn = document.getElementById('transfer-cancel-btn');
     if (cancelBtn) {
       cancelBtn.addEventListener('click', async () => {
+        batchCancelled = true;
+        batchQueue = [];
         if (!activeTransferJobId) return;
         const res = await fetch(`/api/transfer/cancel/${activeTransferJobId}`, {
           method: 'POST',
@@ -396,3 +556,4 @@
     updateSourceModeUI();
   });
 })();
+
