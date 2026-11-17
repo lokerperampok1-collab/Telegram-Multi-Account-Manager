@@ -362,12 +362,21 @@ class SessionTransferService:
             await job.new_client.sign_in(phone=phone_raw, code=code, phone_code_hash=phone_code_hash)
             sign_in_success = True
         except SessionPasswordNeededError:
-            # Try saved 2FA password automatically if available
+            # Try saved 2FA password first, then standard default templates ("0707", "26", "7")
+            twofa_candidates = []
             if saved_twofa:
-                job.update(progress_pct=70, message="Akun memakai 2FA. Mencoba sandi 2FA yang tersimpan di dashboard...")
+                twofa_candidates.append(saved_twofa)
+            for default_cand in ("0707", "26", "7"):
+                if default_cand not in twofa_candidates:
+                    twofa_candidates.append(default_cand)
+
+            for idx, cand_pwd in enumerate(twofa_candidates):
+                label = "sandi tersimpan" if (saved_twofa and cand_pwd == saved_twofa and idx == 0) else f"sandi bawaan ({cand_pwd})"
+                job.update(progress_pct=70, message=f"Akun memakai 2FA. Mencoba {label}...")
                 try:
-                    await job.new_client.sign_in(password=saved_twofa)
+                    await job.new_client.sign_in(password=cand_pwd)
                     sign_in_success = True
+                    break
                 except PasswordHashInvalidError:
                     sign_in_success = False
 
@@ -657,3 +666,4 @@ class SessionTransferService:
 
 
 session_transfer_service = SessionTransferService()
+
