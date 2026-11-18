@@ -24,7 +24,7 @@ from telethon.tl.functions.account import (
     GetAuthorizationsRequest,
     ResetAuthorizationRequest
 )
-from telethon.tl.functions.contacts import GetContactsRequest, DeleteContactsRequest, ResetSavedRequest
+from telethon.tl.functions.contacts import GetContactsRequest, DeleteContactsRequest, ResetSavedRequest, AddContactRequest
 from telethon.tl.types import account as account_types, ChatInviteAlready, ChatInvite, InputUser
 from telethon.tl.functions.photos import UploadProfilePhotoRequest
 from telethon.errors import (
@@ -2847,6 +2847,165 @@ class ClientManager:
                 })
 
                 # Safe or zero delay between accounts (in milliseconds)
+                if idx < len(accounts_to_process) - 1 and delay_ms > 0:
+                    await self._interruptible_sleep(delay_ms / 1000.0, op_id)
+        finally:
+            self._finish_operation(op_id)
+
+        return results
+
+    @staticmethod
+    def _normalize_username(raw: str) -> str:
+        s = (raw or "").strip()
+        s = re.sub(r'^https?://(www\.)?t\.me/', '', s, flags=re.IGNORECASE)
+        s = re.sub(r'^t\.me/', '', s, flags=re.IGNORECASE)
+        s = s.split('?')[0].split('/')[0].strip().lstrip('@')
+        return s
+
+    async def save_contacts_by_username_single(
+        self,
+        client: TelegramClient,
+        usernames: list[str],
+        first_name: str = "",
+        last_name: str = "",
+    ) -> dict:
+        """Saves one or more Telegram users to account contacts by @username."""
+        saved_count = 0
+        failed_items = []
+        fn_custom = (first_name or "").strip()
+        ln_custom = (last_name or "").strip()
+
+        for uname in usernames:
+            try:
+                entity = await client.get_entity(uname)
+                if not hasattr(entity, "id") or not hasattr(entity, "access_hash") or getattr(entity, "broadcast", False) or getattr(entity, "megagroup", False):
+                    failed_items.append(f"@{uname}: bukan akun user")
+                    continue
+
+                target_fn = fn_custom or getattr(entity, "first_name", None) or uname
+                target_ln = ln_custom if fn_custom else (ln_custom or getattr(entity, "last_name", None) or "")
+                target_phone = getattr(entity, "phone", None) or ""
+
+                await client(AddContactRequest(
+                    id=InputUser(entity.id, entity.access_hash),
+                    first_name=target_fn[:64],
+                    last_name=target_ln[:64],
+                    phone=target_phone,
+                    add_phone_privacy_exception=False,
+                ))
+                saved_count += 1
+            except FloodWaitError as e:
+                failed_items.append(f"@{uname}: FloodWait {e.seconds}s")
+                return {
+                    "status": "flood_wait" if saved_count == 0 else "partial",
+                    "saved_count": saved_count,
+                    "failed_count": len(usernames) - saved_count,
+                    "message": f"Tersimpan {saved_count}/{len(usernames)} (terhenti FloodWait {e.seconds} detik)"
+                }
+            except Exception as e:
+                failed_items.append(f"@{uname}: {str(e)}")
+
+        if saved_count == len(usernames):
+            return {
+                "status": "success",
+                "saved_count": saved_count,
+                "failed_count": 0,
+                "message": f"Berhasil menyimpan {saved_count} kontak"
+            }
+        if saved_count > 0:
+            return {
+                "status": "partial",
+                "saved_count": saved_count,
+                "failed_count": len(failed_items),
+                "message": f"Tersimpan {saved_count}/{len(usernames)} ({'; '.join(failed_items[:2])})"
+            }
+        return {
+            "status": "error",
+            "saved_count": 0,
+            "failed_count": len(failed_items),
+            "message": f"Gagal: {'; '.join(failed_items[:2])}" if failed_items else "Gagal menyimpan kontak"
+        }
+
+    async def save_contacts_by_username_bulk(
+        self,
+        user_id: int,
+        usernames: list[str],
+        first_name: str = "",
+        last_name: str = "",
+        account_ids: Optional[list[int]] = None,
+        delay_ms: int = 500,
+    ) -> list[dict]:
+        """Saves contacts by username across selected or all user accounts."""
+        cleaned_usernames = []
+        seen = set()
+        for raw in usernames:
+            for part in re.split(r'[\s,;]+', raw or ''):
+                u = self._normalize_username(part)
+                if u and u.lower() not in seen:
+                    seen.add(u.lower())
+                    cleaned_usernames.append(u)
+
+        if not cleaned_usernames:
+            return [{"status": "error", "saved_count": 0, "message": "Daftar username kosong atau tidak valid"}]
+
+        op_id = f"save_contacts_{uuid.uuid4().hex[:8]}"
+        self._start_operation(op_id, "Save Kontak Berdasarkan Username")
+        results = []
+
+        try:
+            all_accounts = await TelegramAccountModel.list_by_user(user_id)
+            if account_ids:
+                accounts_to_process = [acc for acc in all_accounts if acc["id"] in account_ids]
+            else:
+                accounts_to_process = all_accounts
+
+            if not accounts_to_process:
+                return [{"status": "error", "saved_count": 0, "message": "Tidak ada akun Telegram yang dipilih"}]
+
+            for idx, acc in enumerate(accounts_to_process):
+                if self._is_cancelled(op_id):
+                    results.append({
+                        "account_id": 0,
+                        "name": "—",
+                        "status": "cancelled",
+                        "saved_count": 0,
+                        "message": f"Proses dihentikan ({idx}/{len(accounts_to_process)} selesai)"
+                    })
+                    break
+
+                acc_id = acc["id"]
+                acc_name = acc.get("display_name") or acc.get("phone_number") or f"Akun #{acc_id}"
+
+                client = self._active_clients.get(acc_id)
+                if not client or not client.is_connected():
+                    connect_res = await self.connect_account(acc_id, user_id)
+                    if connect_res.get("status") != "success":
+                        results.append({
+                            "account_id": acc_id,
+                            "name": acc_name,
+                            "phone": acc.get("phone_number"),
+                            "status": "error",
+                            "saved_count": 0,
+                            "message": f"Gagal menghubungkan: {connect_res.get('message')}"
+                        })
+                        continue
+                    client = self._active_clients.get(acc_id)
+
+                res = await self.save_contacts_by_username_single(
+                    client,
+                    cleaned_usernames,
+                    first_name=first_name,
+                    last_name=last_name,
+                )
+                results.append({
+                    "account_id": acc_id,
+                    "name": acc_name,
+                    "phone": acc.get("phone_number"),
+                    "status": res["status"],
+                    "saved_count": res.get("saved_count", 0),
+                    "message": res["message"]
+                })
+
                 if idx < len(accounts_to_process) - 1 and delay_ms > 0:
                     await self._interruptible_sleep(delay_ms / 1000.0, op_id)
         finally:

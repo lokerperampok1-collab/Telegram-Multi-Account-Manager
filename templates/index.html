@@ -122,6 +122,15 @@
           </svg>
           <span class="nav-text">Hapus Kontak</span>
         </button>
+        <button class="nav-item" data-view="view-save-contacts" id="nav-btn-save-contacts">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+            <circle cx="8.5" cy="7" r="4"></circle>
+            <line x1="20" y1="8" x2="20" y2="14"></line>
+            <line x1="23" y1="11" x2="17" y2="11"></line>
+          </svg>
+          <span class="nav-text">Save Kontak</span>
+        </button>
 
         <div class="nav-section-label">AKSI SISTEM & BACKUP</div>
         <button class="nav-item" id="sidebar-connect-offline-btn">
@@ -1154,6 +1163,106 @@ Halo semuanya, selamat beraktivitas ya</textarea>
               </div>
 
               <div id="contacts-results" class="bulk-status-box" style="display: none; margin-top: 16px;"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- VIEW: SAVE KONTAK BERDASARKAN USERNAME -->
+        <div class="view-panel" id="view-save-contacts">
+          <div class="tool-card-lux glass-panel">
+            <div class="tool-header-lux">
+              <div class="tool-icon-circle" style="background: linear-gradient(135deg, var(--accent-cyan), var(--accent-green));">👤</div>
+              <div>
+                <h3 class="tool-title">Save Kontak Berdasarkan Username</h3>
+                <p class="tool-subtitle">Tambahkan satu atau banyak username Telegram ke daftar kontak akun secara massal</p>
+              </div>
+            </div>
+
+            <div class="tool-body-lux">
+              <div class="form-group">
+                <label class="form-label" for="save-contacts-usernames">Daftar Username Target</label>
+                <textarea id="save-contacts-usernames" class="form-input" rows="4" placeholder="Masukkan @username atau link t.me/username (pisahkan dengan baris baru atau koma)&#10;Contoh:&#10;@username1&#10;username2&#10;https://t.me/username3" style="font-family: 'JetBrains Mono', monospace; font-size: 0.85rem;"></textarea>
+                <div class="form-help">Mendukung format <code>@username</code>, <code>username</code>, atau <code>https://t.me/username</code>. Bisa banyak sekaligus.</div>
+              </div>
+
+              <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-bottom: 14px;">
+                <div class="form-group" style="margin-bottom: 0;">
+                  <label class="form-label" for="save-contacts-first-name">Nama Depan Kontak (Opsional)</label>
+                  <input type="text" id="save-contacts-first-name" class="form-input" placeholder="Kosongkan = pakai nama asli target">
+                </div>
+                <div class="form-group" style="margin-bottom: 0;">
+                  <label class="form-label" for="save-contacts-last-name">Nama Belakang Kontak (Opsional)</label>
+                  <input type="text" id="save-contacts-last-name" class="form-input" placeholder="Opsional">
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">Target Akun</label>
+                <div style="display: flex; gap: 16px; margin-bottom: 8px;">
+                  <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                    <input type="radio" name="save-contacts-target-mode" value="all" checked id="save-contacts-target-all">
+                    <span>Semua Akun</span>
+                  </label>
+                  <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                    <input type="radio" name="save-contacts-target-mode" value="selected" id="save-contacts-target-selected">
+                    <span>Pilih Akun Tertentu</span>
+                  </label>
+                </div>
+
+                <div id="save-contacts-account-checklist" style="display: none; padding: 12px; background: rgba(0,0,0,0.25); border-radius: var(--radius-sm); border: 1px solid var(--border-color);">
+                  <div style="display: flex; gap: 8px; margin-bottom: 10px; align-items: center; flex-wrap: wrap;">
+                    <button type="button" class="btn-pill" id="save-contacts-select-all">Pilih Semua</button>
+                    <button type="button" class="btn-pill" id="save-contacts-select-none">Batal</button>
+                    <button type="button" class="btn-pill" id="save-contacts-select-online">Online Saja</button>
+
+                    <div class="search-box" style="flex: 1; min-width: 140px;">
+                      <svg class="search-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="11" cy="11" r="8"></circle>
+                        <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                      </svg>
+                      <input type="text" id="save-contacts-search-accounts" class="search-input" placeholder="Cari nama, no HP..." style="font-size: 0.76rem; padding: 4px 22px 4px 28px;">
+                      <button class="search-clear-btn" id="save-contacts-search-clear-btn" title="Hapus pencarian" style="display: none;">&times;</button>
+                    </div>
+
+                    <div class="id-filter-wrapper" title="Cari awalan Telegram ID (misal: 9, 88...)" style="min-width: 120px;">
+                      <span class="id-filter-prefix" style="font-size: 0.68rem; left: 8px;">TG ID:</span>
+                      <input type="text" id="save-contacts-id-filter" class="filter-input-id" placeholder="Awalan ID..." style="min-width: 110px; padding: 4px 18px 4px 48px; font-size: 0.76rem;">
+                      <button class="id-filter-clear-btn" id="save-contacts-id-clear-btn" title="Reset filter TG ID" style="display: none;">&times;</button>
+                    </div>
+
+                    <select id="save-contacts-status-filter" class="filter-select" style="padding: 4px 8px; font-size: 0.76rem;">
+                      <option value="all">Semua Status</option>
+                      <option value="online">Online Saja</option>
+                      <option value="offline">Offline Saja</option>
+                    </select>
+                  </div>
+                  <div id="save-contacts-account-items" style="max-height: 180px; overflow-y: auto;"></div>
+                </div>
+              </div>
+
+              <div class="form-group">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; flex-wrap: wrap; gap: 6px;">
+                  <label class="form-label" for="save-contacts-delay-ms" style="margin-bottom: 0;">Jeda Waktu Antar Akun (Milidetik / ms)</label>
+                  <div style="display: flex; gap: 6px;">
+                    <button type="button" class="btn-pill" id="save-delay-preset-0">0ms</button>
+                    <button type="button" class="btn-pill" id="save-delay-preset-500">500ms</button>
+                    <button type="button" class="btn-pill" id="save-delay-preset-1000">1000ms</button>
+                    <button type="button" class="btn-pill" id="save-delay-preset-2000">2000ms</button>
+                  </div>
+                </div>
+                <input type="number" id="save-contacts-delay-ms" class="form-input" value="500" min="0" max="30000" step="100" style="max-width: 160px;">
+              </div>
+
+              <div style="display: flex; gap: 10px; width: 100%;">
+                <button class="btn btn-primary" style="flex: 1;" id="start-save-contacts-btn">
+                  <span>👤 Mulai Save Kontak</span>
+                </button>
+                <button class="btn btn-secondary" style="display: none; padding: 10px 18px; font-weight: 600; border-color: var(--accent-rose); color: var(--accent-rose);" id="cancel-save-contacts-btn">
+                  <span>⛔ Hentikan</span>
+                </button>
+              </div>
+
+              <div id="save-contacts-results" class="bulk-status-box" style="display: none; margin-top: 16px;"></div>
             </div>
           </div>
         </div>

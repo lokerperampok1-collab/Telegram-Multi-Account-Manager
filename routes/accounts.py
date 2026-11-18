@@ -608,6 +608,28 @@ async def delete_contacts(req: DeleteContactsApiRequest, current_user: dict = De
     )
     return {"status": "success", "results": results}
 
+# ----------------- Save Kontak Berdasarkan Username -----------------
+
+class SaveContactsApiRequest(BaseModel):
+    usernames: List[str]
+    first_name: Optional[str] = ""
+    last_name: Optional[str] = ""
+    account_ids: Optional[List[int]] = None
+    delay_ms: int = Field(default=500, ge=0, le=30000)
+
+@router.post("/save-contacts")
+async def save_contacts(req: SaveContactsApiRequest, current_user: dict = Depends(get_current_user)):
+    """Saves one or more Telegram users to contacts by username across selected or all accounts."""
+    results = await client_manager.save_contacts_by_username_bulk(
+        user_id=current_user["id"],
+        usernames=req.usernames,
+        first_name=req.first_name or "",
+        last_name=req.last_name or "",
+        account_ids=req.account_ids,
+        delay_ms=req.delay_ms
+    )
+    return {"status": "success", "results": results}
+
 # ----------------- Cancel / Hentikan Proses -----------------
 
 @router.post("/cancel-operation")

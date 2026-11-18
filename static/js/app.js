@@ -222,6 +222,7 @@ document.addEventListener('DOMContentLoaded', () => {
       'cancel-profile-btn',
       'cancel-clean-btn',
       'cancel-contacts-btn',
+      'cancel-save-contacts-btn',
       'cancel-change2fa-btn'
     ];
 
@@ -287,6 +288,7 @@ window.OperationManager = {
       'cancel-profile-btn',
       'cancel-clean-btn',
       'cancel-contacts-btn',
+      'cancel-save-contacts-btn',
       'cancel-change2fa-btn'
     ];
 
@@ -304,7 +306,7 @@ window.OperationManager = {
 
   async requestCancel() {
     // Visually update buttons to indicate stopping state
-    const allCancelBtns = document.querySelectorAll('#global-cancel-btn, #accounts-cancel-btn, #cancel-join-btn, #cancel-sendmsg-btn, #cancel-profile-btn, #cancel-clean-btn, #cancel-contacts-btn, #cancel-change2fa-btn');
+    const allCancelBtns = document.querySelectorAll('#global-cancel-btn, #accounts-cancel-btn, #cancel-join-btn, #cancel-sendmsg-btn, #cancel-profile-btn, #cancel-clean-btn, #cancel-contacts-btn, #cancel-save-contacts-btn, #cancel-change2fa-btn');
     allCancelBtns.forEach(btn => {
       btn.disabled = true;
       btn.innerHTML = '<span>⏳ Menghentikan...</span>';

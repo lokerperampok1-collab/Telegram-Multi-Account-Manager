@@ -1784,6 +1784,159 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  // ------------------- SAVE KONTAK BY USERNAME FLOW -------------------
+  const saveContactsUsernames = document.getElementById('save-contacts-usernames');
+  const saveContactsFirstName = document.getElementById('save-contacts-first-name');
+  const saveContactsLastName = document.getElementById('save-contacts-last-name');
+  const saveContactsRadioAll = document.getElementById('save-contacts-target-all');
+  const saveContactsRadioSelected = document.getElementById('save-contacts-target-selected');
+  const saveContactsChecklistContainer = document.getElementById('save-contacts-account-checklist');
+  const saveContactsDelayMs = document.getElementById('save-contacts-delay-ms');
+  const startSaveContactsBtn = document.getElementById('start-save-contacts-btn');
+  const saveContactsResults = document.getElementById('save-contacts-results');
+
+  if (saveContactsDelayMs) {
+    [
+      ['save-delay-preset-0', 0],
+      ['save-delay-preset-500', 500],
+      ['save-delay-preset-1000', 1000],
+      ['save-delay-preset-2000', 2000],
+    ].forEach(([btnId, val]) => {
+      const btn = document.getElementById(btnId);
+      if (btn) btn.addEventListener('click', () => { saveContactsDelayMs.value = val; });
+    });
+  }
+
+  let cachedSaveContactsAccounts = [];
+  const saveContactsChecklistCtrl = window.setupUniversalChecklist ? window.setupUniversalChecklist({
+    prefix: 'save-contacts',
+    itemsContainerId: 'save-contacts-account-items',
+    checkboxClass: 'save-contacts-acc-checkbox',
+    cachedAccountsGetter: () => cachedSaveContactsAccounts
+  }) : null;
+
+  async function populateSaveContactsChecklist() {
+    const container = document.getElementById('save-contacts-account-items');
+    if (!container || !saveContactsChecklistCtrl) return;
+    try {
+      const res = await fetch('/api/accounts?limit=0', { headers: getAuthHeaders() });
+      const data = await res.json();
+      cachedSaveContactsAccounts = data.accounts || [];
+      saveContactsChecklistCtrl.render();
+    } catch (e) {
+      container.innerHTML = '<div style="color: var(--accent-rose); font-size: 0.8rem;">Gagal memuat daftar akun</div>';
+    }
+  }
+
+  if (saveContactsRadioAll && saveContactsRadioSelected && saveContactsChecklistContainer) {
+    saveContactsRadioAll.addEventListener('change', () => {
+      saveContactsChecklistContainer.style.display = 'none';
+    });
+    saveContactsRadioSelected.addEventListener('change', () => {
+      saveContactsChecklistContainer.style.display = 'block';
+      populateSaveContactsChecklist();
+    });
+  }
+
+  if (startSaveContactsBtn && saveContactsUsernames && saveContactsResults) {
+    startSaveContactsBtn.addEventListener('click', async () => {
+      const rawText = (saveContactsUsernames.value || '').trim();
+      if (!rawText) {
+        showToast('Masukkan minimal satu @username target', 'warning');
+        return;
+      }
+      const usernames = rawText.split(/[\r\n,;]+/).map(s => s.trim()).filter(Boolean);
+
+      let targetIds = null;
+      if (saveContactsRadioSelected && saveContactsRadioSelected.checked) {
+        const checkedBoxes = document.querySelectorAll('.save-contacts-acc-checkbox:checked');
+        targetIds = Array.from(checkedBoxes).map(cb => parseInt(cb.value, 10));
+        if (targetIds.length === 0) {
+          showToast('Pilih minimal satu akun target', 'warning');
+          return;
+        }
+      }
+
+      const delayVal = parseInt(saveContactsDelayMs?.value, 10) || 0;
+      const firstName = (saveContactsFirstName?.value || '').trim();
+      const lastName = (saveContactsLastName?.value || '').trim();
+
+      startSaveContactsBtn.disabled = true;
+      startSaveContactsBtn.innerHTML = '<div class="spinner"></div> Menyimpan kontak...';
+      saveContactsResults.style.display = 'flex';
+      saveContactsResults.innerHTML = '<div style="color: var(--text-secondary); padding: 8px;">Memproses penyimpanan kontak berdasarkan username...</div>';
+
+      if (window.OperationManager) {
+        window.OperationManager.setRunning('Save Kontak Berdasarkan Username', 'cancel-save-contacts-btn');
+      }
+
+      try {
+        const res = await fetch('/api/accounts/save-contacts', {
+          method: 'POST',
+          headers: getAuthHeaders(),
+          body: JSON.stringify({
+            usernames,
+            first_name: firstName,
+            last_name: lastName,
+            account_ids: targetIds,
+            delay_ms: delayVal
+          })
+        });
+        const data = await res.json();
+
+        if (res.ok && data.results) {
+          const successCount = data.results.filter(r => r.status === 'success' || r.status === 'partial').length;
+          const cancelCount = data.results.filter(r => r.status === 'cancelled').length;
+          const failCount = data.results.filter(r => !['success', 'partial', 'cancelled'].includes(r.status)).length;
+          const totalSaved = data.results.reduce((sum, r) => sum + (r.saved_count || 0), 0);
+
+          const summaryHtml = `
+            <div style="margin-bottom: 10px; padding: 8px 12px; background: rgba(0,0,0,0.3); border-radius: var(--radius-sm); display: flex; justify-content: space-between; font-size: 0.85rem; flex-wrap: wrap; gap: 8px;">
+              <span>Total Akun: <strong>${data.results.length}</strong></span>
+              <span style="color: var(--accent-green);">✓ Sukses: <strong>${successCount}</strong> akun</span>
+              <span style="color: var(--accent-cyan);">👤 Kontak Disimpan: <strong>${totalSaved}</strong></span>
+              ${cancelCount > 0 ? `<span style="color: var(--accent-amber);">⛔ Dihentikan: <strong>${cancelCount}</strong></span>` : ''}
+              ${failCount > 0 ? `<span style="color: var(--accent-rose);">❌ Gagal: <strong>${failCount}</strong></span>` : ''}
+            </div>
+          `;
+
+          saveContactsResults.innerHTML = summaryHtml + data.results.map(r => {
+            const isOk = r.status === 'success';
+            const isPartial = r.status === 'partial' || r.status === 'cancelled';
+            const badgeClass = isOk ? 'success' : (isPartial ? 'waiting' : 'error');
+            const badgeText = r.status === 'cancelled' ? '⛔ Dihentikan' : (isOk ? 'Tersimpan' : (r.status === 'partial' ? 'Sebagian' : 'Gagal'));
+
+            return `
+              <div class="bulk-item">
+                <div style="flex: 1; min-width: 0;">
+                  <span class="bulk-item-phone">${escapeHtml(r.name || 'Akun')} (${escapeHtml(r.phone || '-')})</span>
+                  <div style="font-size: 0.75rem; color: var(--text-muted);">${escapeHtml(r.message || '')}</div>
+                </div>
+                <div>
+                  <span class="badge-status ${badgeClass}">${badgeText}</span>
+                </div>
+              </div>
+            `;
+          }).join('');
+
+          showToast(`Selesai! Total ${totalSaved} kontak berhasil disimpan`, totalSaved > 0 ? 'success' : 'warning');
+        } else {
+          saveContactsResults.innerHTML = `<div style="color: var(--accent-rose); padding: 8px;">${escapeHtml(data.detail || 'Gagal menyimpan kontak')}</div>`;
+          showToast(data.detail || 'Gagal menyimpan kontak', 'error');
+        }
+      } catch (err) {
+        showToast('Koneksi server terputus', 'error');
+        saveContactsResults.innerHTML = '<div style="color: var(--accent-rose); padding: 8px;">Koneksi server gagal.</div>';
+      } finally {
+        startSaveContactsBtn.disabled = false;
+        startSaveContactsBtn.innerHTML = '<span>👤 Mulai Save Kontak</span>';
+        if (window.OperationManager) {
+          window.OperationManager.setFinished('cancel-save-contacts-btn');
+        }
+      }
+    });
+  }
+
   // ------------------- GANTI / SET 2FA MASSAL FLOW -------------------
   const tplBtns = document.querySelectorAll('.twofa-tpl-btn');
   const change2faNewPass = document.getElementById('change2fa-new-password');
