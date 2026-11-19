@@ -362,11 +362,11 @@ class SessionTransferService:
             await job.new_client.sign_in(phone=phone_raw, code=code, phone_code_hash=phone_code_hash)
             sign_in_success = True
         except SessionPasswordNeededError:
-            # Try saved 2FA password first, then standard default templates ("0707", "26", "7")
+            # Try saved 2FA password first, then standard default templates ("0707", "26", "7", "466")
             twofa_candidates = []
             if saved_twofa:
                 twofa_candidates.append(saved_twofa)
-            for default_cand in ("0707", "26", "7"):
+            for default_cand in ("0707", "26", "7", "466"):
                 if default_cand not in twofa_candidates:
                     twofa_candidates.append(default_cand)
 
