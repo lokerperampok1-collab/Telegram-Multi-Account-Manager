@@ -1,15 +1,47 @@
+import asyncio
+import weakref
+from contextlib import asynccontextmanager
 import aiosqlite
 from config import settings
 
+DB_TIMEOUT_SECONDS = 30.0
+_DB_WRITE_LOCKS: "weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, asyncio.Lock]" = weakref.WeakKeyDictionary()
+
+
+def _get_write_lock() -> asyncio.Lock:
+    loop = asyncio.get_running_loop()
+    lock = _DB_WRITE_LOCKS.get(loop)
+    if lock is None:
+        lock = asyncio.Lock()
+        _DB_WRITE_LOCKS[loop] = lock
+    return lock
+
+
+@asynccontextmanager
+async def db_connect(write: bool = False):
+    """Async SQLite connection helper with WAL/busy_timeout and serialized writes per event loop."""
+    if write:
+        async with _get_write_lock():
+            async with aiosqlite.connect(settings.DB_PATH, timeout=DB_TIMEOUT_SECONDS) as db:
+                await db.execute("PRAGMA busy_timeout = 30000;")
+                yield db
+    else:
+        async with aiosqlite.connect(settings.DB_PATH, timeout=DB_TIMEOUT_SECONDS) as db:
+            await db.execute("PRAGMA busy_timeout = 30000;")
+            yield db
+
+
 async def get_db():
     """Async context manager / generator for database connection."""
-    async with aiosqlite.connect(settings.DB_PATH) as db:
+    async with db_connect(write=False) as db:
         db.row_factory = aiosqlite.Row
         yield db
 
 async def init_db():
     """Initialize database tables."""
-    async with aiosqlite.connect(settings.DB_PATH) as db:
+    async with db_connect(write=True) as db:
+        await db.execute("PRAGMA journal_mode = WAL;")
+        await db.execute("PRAGMA synchronous = NORMAL;")
         await db.execute("""
             CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,

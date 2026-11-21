@@ -652,7 +652,8 @@ document.addEventListener('DOMContentLoaded', () => {
         }
       }
 
-      const delaySeconds = parseInt(joinDelayInput.value) || 3;
+      const parsedJoinDelay = parseInt(joinDelayInput.value, 10);
+      const delaySeconds = Number.isNaN(parsedJoinDelay) ? 0 : Math.max(0, parsedJoinDelay);
 
       startJoinBtn.disabled = true;
       startJoinBtn.innerHTML = '<div class="spinner"></div> Menjalankan proses join grup...';
@@ -910,7 +911,8 @@ document.addEventListener('DOMContentLoaded', () => {
         targetIds = Array.from(selectedProfileAccountIds);
       }
 
-      const delay = parseInt(profileDelay ? profileDelay.value : '2') || 2;
+      const parsedProfileDelay = parseInt(profileDelay ? profileDelay.value : '0', 10);
+      const delay = Number.isNaN(parsedProfileDelay) ? 0 : Math.max(0, parsedProfileDelay);
 
       const formData = new FormData();
       formData.append('name_mode', nameMode);
@@ -1554,7 +1556,8 @@ document.addEventListener('DOMContentLoaded', () => {
         targetIds = checked;
       }
 
-      const delaySec = parseInt(sendmsgDelay.value) || 5;
+      const parsedSendDelay = parseInt(sendmsgDelay.value, 10);
+      const delaySec = Number.isNaN(parsedSendDelay) ? 0 : Math.max(0, parsedSendDelay);
       const distMode = sendmsgDistMode ? sendmsgDistMode.value : 'random';
       const autoJoin = sendmsgAutoJoin ? sendmsgAutoJoin.checked : true;
 
@@ -2064,7 +2067,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
       const oldPass = change2faCurrentPass ? change2faCurrentPass.value.trim() : '';
       const hintVal = change2faHint ? change2faHint.value.trim() : '';
-      const delaySec = change2faDelay ? (parseInt(change2faDelay.value) || 0) : 1;
+      const parsed2faDelay = change2faDelay ? parseInt(change2faDelay.value, 10) : 0;
+      const delaySec = Number.isNaN(parsed2faDelay) ? 0 : Math.max(0, parsed2faDelay);
 
       if (!confirm(`Konfirmasi: Terapkan sandi 2FA baru "${newPass}" ke ${targetIds ? targetIds.length + ' akun terpilih' : 'SEMUA AKUN'}?`)) {
         return;

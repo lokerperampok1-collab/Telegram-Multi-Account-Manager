@@ -80,8 +80,7 @@ async def refresh_qr(token: str, current_user: dict = Depends(get_current_user))
 
 @router.post("/login/bulk")
 async def start_bulk_login(req: BulkLoginRequest, current_user: dict = Depends(get_current_user)):
-    """Initiates login for multiple phone numbers sequentially with internal deduplication and skip-existing check."""
-    results = []
+    """Initiates login for multiple phone numbers in parallel with internal deduplication and skip-existing check."""
     seen = set()
     cleaned_phones = []
 
@@ -95,26 +94,25 @@ async def start_bulk_login(req: BulkLoginRequest, current_user: dict = Depends(g
                 seen.add(phone)
                 cleaned_phones.append(phone)
 
-    # 2. Process numbers (automatically skip if already in dashboard database)
-    for phone in cleaned_phones:
+    # 2. Process all phones in parallel (automatically skip if already in dashboard database)
+    async def _process_phone(phone: str) -> dict:
         existing = await TelegramAccountModel.get_by_phone(current_user["id"], phone)
         if existing:
-            results.append({
+            return {
                 "phone": phone,
                 "status": "skipped",
                 "token": None,
                 "message": "Dilewati (Nomor sudah terdaftar di dashboard)"
-            })
-            continue
+            }
 
         res = await client_manager.start_phone_login(phone, current_user["id"])
-        results.append({
+        return {
             "phone": phone,
             "status": res.get("status"),
             "token": res.get("token"),
             "message": res.get("message")
-        })
-        # Graceful delay to prevent fast spamming
-        await asyncio.sleep(1.5)
+        }
+
+    results = list(await asyncio.gather(*(_process_phone(p) for p in cleaned_phones)))
 
     return {"status": "success", "results": results}

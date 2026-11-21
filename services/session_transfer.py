@@ -671,7 +671,7 @@ class SessionTransferService:
         dashboard_account_ids: list[int],
         auto_logout_old: bool = True,
         save_to_dashboard: bool = True,
-        max_concurrent: int = 10,
+        max_concurrent: int = 0,
     ) -> Dict[str, Any]:
         if not settings.API_ID or not settings.API_HASH:
             raise ValueError("API_ID dan API_HASH belum dikonfigurasi pada server.")

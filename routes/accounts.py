@@ -13,7 +13,7 @@ router = APIRouter()
 class JoinGroupRequest(BaseModel):
     account_ids: Optional[List[int]] = None
     group_link: str
-    delay_seconds: int = Field(default=3, ge=1, le=60)
+    delay_seconds: int = Field(default=0, ge=0, le=60)
 
 class ImportSessionsRequest(BaseModel):
     sessions: List[str]
@@ -212,7 +212,7 @@ async def check_all_health(
     req: Optional[CheckFilterRequest] = None,
     current_user: dict = Depends(get_current_user)
 ):
-    """Queries @SpamBot for filtered or all user accounts sequentially."""
+    """Queries @SpamBot for filtered or all user accounts in parallel."""
     target_ids = await _resolve_account_ids_from_filter(current_user["id"], req)
     results = await client_manager.check_all_accounts_health(current_user["id"], account_ids=target_ids)
     return {"status": "success", "results": results}
@@ -224,7 +224,7 @@ class Change2FARequest(BaseModel):
     new_password: str
     current_password: Optional[str] = None
     hint: Optional[str] = ""
-    delay_seconds: int = Field(default=1, ge=0, le=60)
+    delay_seconds: int = Field(default=0, ge=0, le=60)
 
 @router.post("/{account_id}/check-2fa")
 async def check_account_2fa(
@@ -248,7 +248,7 @@ async def check_all_2fa(
     req: Optional[CheckFilterRequest] = None,
     current_user: dict = Depends(get_current_user)
 ):
-    """Checks Two-Step Verification (2FA) for filtered or all user accounts sequentially."""
+    """Checks Two-Step Verification (2FA) for filtered or all user accounts in parallel."""
     target_ids = await _resolve_account_ids_from_filter(current_user["id"], req)
     results = await client_manager.check_all_accounts_2fa(current_user["id"], account_ids=target_ids)
     return {"status": "success", "results": results}
@@ -449,7 +449,7 @@ async def update_profile(
     name_mode: str = Form("fixed"),
     numbering_start: int = Form(1),
     account_ids: Optional[str] = Form(None),
-    delay_seconds: int = Form(3),
+    delay_seconds: int = Form(0),
     photo: Optional[UploadFile] = File(None),
     current_user: dict = Depends(get_current_user)
 ):
@@ -539,7 +539,7 @@ class SendGroupMessageRequest(BaseModel):
     messages: List[str]
     distribution_mode: str = "random" # "random" or "round_robin"
     auto_join: bool = True
-    delay_seconds: int = Field(default=5, ge=1, le=60)
+    delay_seconds: int = Field(default=0, ge=0, le=60)
 
 @router.post("/send-group-message")
 async def send_group_message(req: SendGroupMessageRequest, current_user: dict = Depends(get_current_user)):
@@ -615,7 +615,7 @@ class SaveContactsApiRequest(BaseModel):
     first_name: Optional[str] = ""
     last_name: Optional[str] = ""
     account_ids: Optional[List[int]] = None
-    delay_ms: int = Field(default=500, ge=0, le=30000)
+    delay_ms: int = Field(default=0, ge=0, le=30000)
 
 @router.post("/save-contacts")
 async def save_contacts(req: SaveContactsApiRequest, current_user: dict = Depends(get_current_user)):

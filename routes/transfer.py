@@ -26,7 +26,7 @@ class StartBatchTransferRequest(BaseModel):
     account_ids: List[int]
     auto_logout_old: bool = True
     save_to_dashboard: bool = True
-    max_concurrent: int = Field(default=10, ge=0, le=100)
+    max_concurrent: int = Field(default=0, ge=0, le=100)
 
 
 @router.post("/start")

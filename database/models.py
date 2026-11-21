@@ -1,12 +1,12 @@
 import aiosqlite
 from typing import Optional, List, Dict, Any
 from datetime import datetime
-from config import settings
+from database.db import db_connect
 
 class UserModel:
     @staticmethod
     async def create(username: str, password_hash: str) -> Optional[int]:
-        async with aiosqlite.connect(settings.DB_PATH) as db:
+        async with db_connect(write=True) as db:
             cursor = await db.execute(
                 "INSERT INTO users (username, password_hash) VALUES (?, ?)",
                 (username, password_hash)
@@ -16,7 +16,7 @@ class UserModel:
 
     @staticmethod
     async def get_by_username(username: str) -> Optional[dict]:
-        async with aiosqlite.connect(settings.DB_PATH) as db:
+        async with db_connect(write=False) as db:
             db.row_factory = aiosqlite.Row
             cursor = await db.execute(
                 "SELECT * FROM users WHERE username = ?",
@@ -27,7 +27,7 @@ class UserModel:
 
     @staticmethod
     async def get_by_id(user_id: int) -> Optional[dict]:
-        async with aiosqlite.connect(settings.DB_PATH) as db:
+        async with db_connect(write=False) as db:
             db.row_factory = aiosqlite.Row
             cursor = await db.execute(
                 "SELECT id, username, created_at FROM users WHERE id = ?",
@@ -41,7 +41,7 @@ class TelegramAccountModel:
     @staticmethod
     async def get_by_phone(user_id: int, phone_number: str) -> Optional[dict]:
         """Retrieves account by phone number for a user to detect duplicates."""
-        async with aiosqlite.connect(settings.DB_PATH) as db:
+        async with db_connect(write=False) as db:
             db.row_factory = aiosqlite.Row
             cursor = await db.execute(
                 "SELECT * FROM telegram_accounts WHERE user_id = ? AND phone_number = ?",
@@ -53,7 +53,7 @@ class TelegramAccountModel:
     @staticmethod
     async def get_by_telegram_id(user_id: int, telegram_id: int) -> Optional[dict]:
         """Retrieves account by telegram user id to detect duplicates."""
-        async with aiosqlite.connect(settings.DB_PATH) as db:
+        async with db_connect(write=False) as db:
             db.row_factory = aiosqlite.Row
             cursor = await db.execute(
                 "SELECT * FROM telegram_accounts WHERE user_id = ? AND telegram_id = ?",
@@ -77,7 +77,7 @@ class TelegramAccountModel:
         Guarantees 100% no duplicate account cards in dashboard.
         Returns: (account_id, is_updated: bool)
         """
-        async with aiosqlite.connect(settings.DB_PATH) as db:
+        async with db_connect(write=True) as db:
             db.row_factory = aiosqlite.Row
 
             existing = None
@@ -127,7 +127,7 @@ class TelegramAccountModel:
 
     @staticmethod
     async def list_by_user(user_id: int) -> List[dict]:
-        async with aiosqlite.connect(settings.DB_PATH) as db:
+        async with db_connect(write=False) as db:
             db.row_factory = aiosqlite.Row
             cursor = await db.execute(
                 """
@@ -156,7 +156,7 @@ class TelegramAccountModel:
         sort: Optional[str] = "id_desc"
     ) -> Dict[str, Any]:
         """Returns paginated and filtered accounts for high scalability (100-1000+ accounts)."""
-        async with aiosqlite.connect(settings.DB_PATH) as db:
+        async with db_connect(write=False) as db:
             db.row_factory = aiosqlite.Row
 
             where_clauses = ["user_id = ?"]
@@ -270,7 +270,7 @@ class TelegramAccountModel:
 
     @staticmethod
     async def get_by_id(account_id: int, user_id: int) -> Optional[dict]:
-        async with aiosqlite.connect(settings.DB_PATH) as db:
+        async with db_connect(write=False) as db:
             db.row_factory = aiosqlite.Row
             cursor = await db.execute(
                 "SELECT * FROM telegram_accounts WHERE id = ? AND user_id = ?",
@@ -281,7 +281,7 @@ class TelegramAccountModel:
 
     @staticmethod
     async def update_status(account_id: int, is_active: bool):
-        async with aiosqlite.connect(settings.DB_PATH) as db:
+        async with db_connect(write=True) as db:
             await db.execute(
                 """
                 UPDATE telegram_accounts 
@@ -302,7 +302,7 @@ class TelegramAccountModel:
         twofa_reset_until: Optional[str] = None
     ):
         """Updates the 2FA status, password hint, confirmed password, and reset status for an account."""
-        async with aiosqlite.connect(settings.DB_PATH) as db:
+        async with db_connect(write=True) as db:
             await db.execute(
                 """
                 UPDATE telegram_accounts 
@@ -316,7 +316,7 @@ class TelegramAccountModel:
     @staticmethod
     async def list_by_user_with_sessions(user_id: int) -> List[dict]:
         """Returns accounts including encrypted session strings for export/backup."""
-        async with aiosqlite.connect(settings.DB_PATH) as db:
+        async with db_connect(write=False) as db:
             db.row_factory = aiosqlite.Row
             cursor = await db.execute(
                 """
@@ -335,7 +335,7 @@ class TelegramAccountModel:
     @staticmethod
     async def update_spambot_status(account_id: int, spambot_status: Optional[str], spambot_message: Optional[str] = None):
         """Updates SpamBot check status and message for an account."""
-        async with aiosqlite.connect(settings.DB_PATH) as db:
+        async with db_connect(write=True) as db:
             await db.execute(
                 "UPDATE telegram_accounts SET spambot_status = ?, spambot_message = ? WHERE id = ?",
                 (spambot_status, spambot_message, account_id)
@@ -345,7 +345,7 @@ class TelegramAccountModel:
     @staticmethod
     async def get_distinct_2fa_passwords(user_id: int) -> List[str]:
         """Returns distinct non-empty 2FA passwords saved across this user's accounts."""
-        async with aiosqlite.connect(settings.DB_PATH) as db:
+        async with db_connect(write=False) as db:
             cursor = await db.execute(
                 """
                 SELECT DISTINCT twofa_password
@@ -359,7 +359,7 @@ class TelegramAccountModel:
 
     @staticmethod
     async def update_display_name(account_id: int, display_name: str):
-        async with aiosqlite.connect(settings.DB_PATH) as db:
+        async with db_connect(write=True) as db:
             await db.execute(
                 "UPDATE telegram_accounts SET display_name = ? WHERE id = ?",
                 (display_name, account_id)
@@ -368,7 +368,7 @@ class TelegramAccountModel:
 
     @staticmethod
     async def delete(account_id: int, user_id: int) -> bool:
-        async with aiosqlite.connect(settings.DB_PATH) as db:
+        async with db_connect(write=True) as db:
             cursor = await db.execute(
                 "DELETE FROM telegram_accounts WHERE id = ? AND user_id = ?",
                 (account_id, user_id)

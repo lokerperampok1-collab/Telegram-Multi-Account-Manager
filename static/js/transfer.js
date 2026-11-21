@@ -565,8 +565,8 @@
         return;
       }
       if (selectedTransferAccountIds.size > 1) {
-        const concurrencyRaw = parseInt(document.getElementById('transfer-concurrency-select')?.value ?? '10', 10);
-        const maxConcurrent = Number.isNaN(concurrencyRaw) ? 10 : concurrencyRaw;
+        const concurrencyRaw = parseInt(document.getElementById('transfer-concurrency-select')?.value ?? '0', 10);
+        const maxConcurrent = Number.isNaN(concurrencyRaw) ? 0 : concurrencyRaw;
         if (startBtn) startBtn.disabled = true;
 
         try {
