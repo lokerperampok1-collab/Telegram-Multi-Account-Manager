@@ -22,5 +22,6 @@ class Settings:
     HOST: str = os.getenv("HOST", "0.0.0.0")
     PORT: int = int(os.getenv("PORT", "8000"))
     DEBUG: bool = os.getenv("DEBUG", "false").lower() in ("true", "1", "yes")
+    EXPORT_SAVE_DIR: str = os.getenv("EXPORT_SAVE_DIR", r"E:\SEMUA_SESI_TELE").strip() or r"E:\SEMUA_SESI_TELE"
 
 settings = Settings()

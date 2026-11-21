@@ -1,9 +1,13 @@
+import os
+import re
 import json
+from pathlib import Path
 from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException, Form, File, UploadFile, Query
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
+from config import settings
 from services.auth_service import get_current_user
 from services.client_manager import client_manager
 from database.models import TelegramAccountModel
@@ -302,6 +306,80 @@ async def get_account_otp(account_id: int, current_user: dict = Depends(get_curr
 
 class ExportSessionsRequest(BaseModel):
     account_ids: Optional[List[int]] = None
+    filename: Optional[str] = None
+    save_to_local: bool = False
+    save_dir: Optional[str] = None
+    return_file: bool = True
+
+def _sanitize_export_filename(raw_name: Optional[str], default_stem: str, ext: str) -> str:
+    """Sanitizes a user-supplied export filename and enforces the expected extension."""
+    clean_ext = ext if ext.startswith(".") else f".{ext}"
+    name = (raw_name or "").strip().replace("\\", "/")
+    name = os.path.basename(name).strip()
+    name = re.sub(r'[<>:"/\\|?*\x00-\x1f]+', "_", name)
+    name = re.sub(r"[\s_]+", lambda m: " " if " " in m.group(0) and "_" not in m.group(0) else "_", name)
+    name = re.sub(r"\.(zip|txt|json)$", "", name, flags=re.IGNORECASE)
+    name = name.strip(" ._")
+    if not name:
+        name = default_stem
+    return f"{name}{clean_ext}"
+
+def _save_export_bytes_to_dir(content: bytes, filename: str, save_dir: Optional[str]) -> Path:
+    """Writes exported bytes into target_dir using a collision-safe filename (never overwrites)."""
+    target_dir = Path((save_dir or "").strip() or settings.EXPORT_SAVE_DIR)
+    target_dir.mkdir(parents=True, exist_ok=True)
+    candidate = target_dir / filename
+    if candidate.exists():
+        stem = candidate.stem
+        suffix = candidate.suffix
+        counter = 2
+        while (target_dir / f"{stem}_{counter}{suffix}").exists():
+            counter += 1
+        candidate = target_dir / f"{stem}_{counter}{suffix}"
+    candidate.write_bytes(content)
+    return candidate
+
+def _build_export_response(
+    content: bytes,
+    media_type: str,
+    default_stem: str,
+    ext: str,
+    req: Optional[ExportSessionsRequest]
+):
+    """Optionally auto-saves export bytes to local folder and returns either JSON metadata or file download."""
+    final_name = _sanitize_export_filename(req.filename if req else None, default_stem, ext)
+    if req and req.save_to_local:
+        try:
+            saved_path = _save_export_bytes_to_dir(content, final_name, req.save_dir)
+        except OSError as e:
+            raise HTTPException(status_code=400, detail=f"Gagal menyimpan file ke folder tujuan: {str(e)}")
+        if not req.return_file:
+            return {
+                "status": "success",
+                "saved_path": str(saved_path),
+                "filename": saved_path.name,
+                "size_bytes": len(content),
+                "message": f"File berhasil disimpan ke {saved_path}",
+            }
+        return Response(
+            content=content,
+            media_type=media_type,
+            headers={
+                "Content-Disposition": f'attachment; filename="{saved_path.name}"',
+                "X-Saved-Path": str(saved_path),
+                "Access-Control-Expose-Headers": "X-Saved-Path, Content-Disposition",
+            },
+        )
+    return Response(
+        content=content,
+        media_type=media_type,
+        headers={"Content-Disposition": f'attachment; filename="{final_name}"'},
+    )
+
+@router.get("/export/config")
+async def get_export_config(current_user: dict = Depends(get_current_user)):
+    """Returns default server-side export save folder configuration."""
+    return {"default_save_dir": settings.EXPORT_SAVE_DIR}
 
 def _parse_ids_query(ids: Optional[str]) -> Optional[List[int]]:
     if not ids or not ids.strip():
@@ -327,15 +405,11 @@ async def export_json(ids: Optional[str] = None, current_user: dict = Depends(ge
 
 @router.post("/export/json")
 async def export_json_post(req: Optional[ExportSessionsRequest] = None, current_user: dict = Depends(get_current_user)):
-    """Exports all or selected accounts with decrypted StringSessions as downloadable JSON via POST."""
+    """Exports all or selected accounts with decrypted StringSessions as JSON (download and/or local auto-save)."""
     target_ids = req.account_ids if req else None
     data = await client_manager.export_sessions(current_user["id"], account_ids=target_ids)
-    json_str = json.dumps(data, indent=2)
-    return Response(
-        content=json_str,
-        media_type="application/json",
-        headers={"Content-Disposition": "attachment; filename=telegram_sessions_backup.json"}
-    )
+    json_bytes = json.dumps(data, indent=2).encode("utf-8")
+    return _build_export_response(json_bytes, "application/json", "telegram_sessions_backup", ".json", req)
 
 @router.get("/export/txt")
 async def export_txt(ids: Optional[str] = None, current_user: dict = Depends(get_current_user)):
@@ -352,16 +426,12 @@ async def export_txt(ids: Optional[str] = None, current_user: dict = Depends(get
 
 @router.post("/export/txt")
 async def export_txt_post(req: Optional[ExportSessionsRequest] = None, current_user: dict = Depends(get_current_user)):
-    """Exports raw StringSessions of all or selected accounts one per line as downloadable TXT via POST."""
+    """Exports raw StringSessions as TXT (download and/or local auto-save)."""
     target_ids = req.account_ids if req else None
     data = await client_manager.export_sessions(current_user["id"], account_ids=target_ids)
     txt_lines = [item["session_string"] for item in data if item.get("session_string")]
-    txt_content = "\n".join(txt_lines)
-    return Response(
-        content=txt_content,
-        media_type="text/plain",
-        headers={"Content-Disposition": "attachment; filename=telegram_sessions_backup.txt"}
-    )
+    txt_bytes = "\n".join(txt_lines).encode("utf-8")
+    return _build_export_response(txt_bytes, "text/plain", "telegram_sessions_backup", ".txt", req)
 
 @router.get("/export/zip")
 async def export_zip(ids: Optional[str] = None, current_user: dict = Depends(get_current_user)):
@@ -376,14 +446,10 @@ async def export_zip(ids: Optional[str] = None, current_user: dict = Depends(get
 
 @router.post("/export/zip")
 async def export_zip_post(req: Optional[ExportSessionsRequest] = None, current_user: dict = Depends(get_current_user)):
-    """Exports all or selected accounts as a downloadable ZIP via POST."""
+    """Exports all or selected accounts as a ZIP archive (download and/or local auto-save)."""
     target_ids = req.account_ids if req else None
     zip_bytes = await client_manager.export_sessions_zip(current_user["id"], account_ids=target_ids)
-    return Response(
-        content=zip_bytes,
-        media_type="application/zip",
-        headers={"Content-Disposition": "attachment; filename=telegram_sessions_archive.zip"}
-    )
+    return _build_export_response(zip_bytes, "application/zip", "telegram_sessions_archive", ".zip", req)
 
 @router.get("/export/nicegram")
 async def export_nicegram(ids: Optional[str] = None, current_user: dict = Depends(get_current_user)):
@@ -398,14 +464,10 @@ async def export_nicegram(ids: Optional[str] = None, current_user: dict = Depend
 
 @router.post("/export/nicegram")
 async def export_nicegram_post(req: Optional[ExportSessionsRequest] = None, current_user: dict = Depends(get_current_user)):
-    """Exports all or selected accounts as a Nicegram-compatible ZIP archive via POST."""
+    """Exports all or selected accounts as a Nicegram ZIP archive (download and/or local auto-save)."""
     target_ids = req.account_ids if req else None
     zip_bytes = await client_manager.export_sessions_nicegram_zip(current_user["id"], account_ids=target_ids)
-    return Response(
-        content=zip_bytes,
-        media_type="application/zip",
-        headers={"Content-Disposition": "attachment; filename=nicegram_exported_accounts.zip"}
-    )
+    return _build_export_response(zip_bytes, "application/zip", "nicegram_exported_accounts", ".zip", req)
 
 @router.post("/import-sessions")
 async def import_sessions(req: ImportSessionsRequest, current_user: dict = Depends(get_current_user)):

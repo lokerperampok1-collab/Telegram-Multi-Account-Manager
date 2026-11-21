@@ -805,6 +805,85 @@ async function checkAllAccounts2FA() {
 
 let cachedExportAccounts = [];
 const selectedExportAccountIds = new Set();
+let exportFilenameManuallyEdited = false;
+let defaultExportSaveDir = 'E:\\SEMUA_SESI_TELE';
+
+function getCurrentExportFormat() {
+  const nicegramRadio = document.getElementById('export-format-nicegram');
+  const zipRadio = document.getElementById('export-format-zip');
+  const txtRadio = document.getElementById('export-format-txt');
+  const jsonRadio = document.getElementById('export-format-json');
+  if (nicegramRadio && nicegramRadio.checked) return 'nicegram';
+  if (zipRadio && zipRadio.checked) return 'zip';
+  if (txtRadio && txtRadio.checked) return 'txt';
+  if (jsonRadio && jsonRadio.checked) return 'json';
+  return 'nicegram';
+}
+
+function getLoggedInUsernameSlug() {
+  try {
+    const raw = localStorage.getItem('user');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      const slug = String(parsed.username || '').replace(/[^a-zA-Z0-9_-]+/g, '_').replace(/^_+|_+$/g, '');
+      if (slug) return slug;
+    }
+  } catch (e) {}
+  return 'telegram';
+}
+
+function generateAutoExportFilename(format, count) {
+  const user = getLoggedInUsernameSlug();
+  const d = new Date();
+  const pad = (n) => String(n).padStart(2, '0');
+  const ts = `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
+  const qty = `${count}_akun`;
+  if (format === 'nicegram') return `nicegram_${user}_${qty}_${ts}.zip`;
+  if (format === 'zip') return `${user}_${qty}_${ts}.zip`;
+  if (format === 'txt') return `${user}_strings_${qty}_${ts}.txt`;
+  if (format === 'json') return `${user}_backup_${qty}_${ts}.json`;
+  return `${user}_${qty}_${ts}.zip`;
+}
+
+function ensureFilenameExtension(name, format) {
+  const ext = (format === 'txt') ? '.txt' : (format === 'json' ? '.json' : '.zip');
+  const clean = (name || '').trim().replace(/\.(zip|txt|json)$/i, '');
+  return clean ? `${clean}${ext}` : generateAutoExportFilename(format, selectedExportAccountIds.size);
+}
+
+function syncAutoExportFilename(force = false) {
+  const input = document.getElementById('export-filename-input');
+  if (!input) return;
+  const fmt = getCurrentExportFormat();
+  if (force || !exportFilenameManuallyEdited || !input.value.trim()) {
+    input.value = generateAutoExportFilename(fmt, selectedExportAccountIds.size);
+  } else {
+    input.value = ensureFilenameExtension(input.value.trim(), fmt);
+  }
+}
+
+function updateExportSaveUI() {
+  const autoSaveChk = document.getElementById('export-auto-save-chk');
+  const dirWrap = document.getElementById('export-save-dir-wrap');
+  const alsoDownloadChk = document.getElementById('export-also-download-chk');
+  const downloadBtn = document.getElementById('export-download-submit-btn');
+
+  const autoSave = Boolean(autoSaveChk && autoSaveChk.checked);
+  const alsoDownload = Boolean(alsoDownloadChk && alsoDownloadChk.checked);
+
+  if (dirWrap) {
+    dirWrap.style.display = autoSave ? 'flex' : 'none';
+  }
+  if (downloadBtn) {
+    if (autoSave && !alsoDownload) {
+      downloadBtn.innerHTML = '<span>💾 Simpan ke Folder</span>';
+    } else if (autoSave && alsoDownload) {
+      downloadBtn.innerHTML = '<span>💾 Simpan & Download</span>';
+    } else {
+      downloadBtn.innerHTML = '<span>💾 Download File Export</span>';
+    }
+  }
+}
 
 function updateExportFormatUI() {
   const nicegramRadio = document.getElementById('export-format-nicegram');
@@ -847,6 +926,9 @@ function updateExportFormatUI() {
       copyBtn.innerHTML = isTxt ? '<span>📋 Salin String ke Clipboard</span>' : '<span>📋 Salin JSON ke Clipboard</span>';
     }
   }
+
+  syncAutoExportFilename(false);
+  updateExportSaveUI();
 }
 
 function updateExportCountBadge() {
@@ -854,6 +936,7 @@ function updateExportCountBadge() {
   if (countEl) {
     countEl.textContent = `${selectedExportAccountIds.size} dari ${cachedExportAccounts.length} akun dipilih`;
   }
+  syncAutoExportFilename(false);
 }
 
 let exportChecklistCtrl = null;
@@ -930,6 +1013,11 @@ window.openExportModal = async function(defaultFormat = 'zip') {
   const jsonRadio = document.getElementById('export-format-json');
   const searchInput = document.getElementById('export-search-accounts');
   const container = document.getElementById('export-account-items');
+  const autoSaveChk = document.getElementById('export-auto-save-chk');
+  const alsoDownloadChk = document.getElementById('export-also-download-chk');
+  const saveDirInput = document.getElementById('export-save-dir-input');
+
+  exportFilenameManuallyEdited = false;
 
   if (defaultFormat === 'nicegram' && nicegramRadio) {
     nicegramRadio.checked = true;
@@ -942,7 +1030,21 @@ window.openExportModal = async function(defaultFormat = 'zip') {
   } else if (nicegramRadio) {
     nicegramRadio.checked = true;
   }
+
+  const fmt = getCurrentExportFormat();
+  if (autoSaveChk) {
+    autoSaveChk.checked = (fmt === 'zip' || fmt === 'nicegram');
+  }
+  if (alsoDownloadChk) {
+    alsoDownloadChk.checked = false;
+  }
+  if (saveDirInput) {
+    saveDirInput.value = localStorage.getItem('export_save_dir') || defaultExportSaveDir;
+  }
+
   updateExportFormatUI();
+  syncAutoExportFilename(true);
+  updateExportSaveUI();
 
   if (searchInput) searchInput.value = '';
   const idFilter = document.getElementById('export-id-filter');
@@ -967,6 +1069,7 @@ window.openExportModal = async function(defaultFormat = 'zip') {
     selectedExportAccountIds.clear();
     renderExportChecklist(cachedExportAccounts);
     updateExportCountBadge();
+    syncAutoExportFilename(false);
   } catch (e) {
     if (container) {
       container.innerHTML = '<div style="color: var(--accent-rose); font-size: 0.82rem; padding: 8px;">Gagal memuat daftar akun</div>';
@@ -993,17 +1096,21 @@ async function executeExportAction(actionType = 'download') {
     return;
   }
 
-  const nicegramRadio = document.getElementById('export-format-nicegram');
-  const zipRadio = document.getElementById('export-format-zip');
-  const txtRadio = document.getElementById('export-format-txt');
-  const jsonRadio = document.getElementById('export-format-json');
-  let format = 'nicegram';
-  if (nicegramRadio && nicegramRadio.checked) format = 'nicegram';
-  else if (zipRadio && zipRadio.checked) format = 'zip';
-  else if (txtRadio && txtRadio.checked) format = 'txt';
-  else if (jsonRadio && jsonRadio.checked) format = 'json';
-
+  const format = getCurrentExportFormat();
   const accountIds = Array.from(selectedExportAccountIds);
+
+  const rawFilename = (document.getElementById('export-filename-input')?.value || '').trim();
+  const finalFilename = ensureFilenameExtension(
+    rawFilename || generateAutoExportFilename(format, accountIds.length),
+    format
+  );
+  const autoSave = actionType === 'download' && Boolean(document.getElementById('export-auto-save-chk')?.checked);
+  const alsoDownload = Boolean(document.getElementById('export-also-download-chk')?.checked);
+  const saveDir = (document.getElementById('export-save-dir-input')?.value || defaultExportSaveDir).trim() || defaultExportSaveDir;
+  if (autoSave) {
+    localStorage.setItem('export_save_dir', saveDir);
+  }
+  const returnFile = (actionType === 'copy') || !autoSave || alsoDownload;
 
   const downloadBtn = document.getElementById('export-download-submit-btn');
   const copyBtn = document.getElementById('export-copy-clipboard-btn');
@@ -1018,11 +1125,22 @@ async function executeExportAction(actionType = 'download') {
     const res = await fetch(`/api/accounts/export/${format}`, {
       method: 'POST',
       headers: getAuthHeaders(),
-      body: JSON.stringify({ account_ids: accountIds })
+      body: JSON.stringify({
+        account_ids: accountIds,
+        filename: finalFilename,
+        save_to_local: autoSave,
+        save_dir: saveDir,
+        return_file: returnFile
+      })
     });
 
     if (!res.ok) {
-      showToast('Gagal mengekspor sesi akun', 'error');
+      let errMsg = 'Gagal mengekspor sesi akun';
+      try {
+        const errData = await res.json();
+        if (errData && errData.detail) errMsg = errData.detail;
+      } catch (err) {}
+      showToast(errMsg, 'error');
       return;
     }
 
@@ -1034,22 +1152,26 @@ async function executeExportAction(actionType = 'download') {
       }
       await navigator.clipboard.writeText(textContent);
       showToast(`Berhasil menyalin ${accountIds.length} sesi (${format.toUpperCase()}) ke clipboard!`, 'success');
+    } else if (autoSave && !alsoDownload) {
+      const data = await res.json();
+      showToast(`Berhasil disimpan ke ${data.saved_path} (${accountIds.length} akun)`, 'success');
+      window.closeExportModal();
     } else {
+      const savedPath = res.headers.get('X-Saved-Path');
       const blob = await res.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      if (format === 'nicegram') {
-        a.download = `Nicegram Exported Accounts (${accountIds.length} akun).zip`;
-      } else {
-        a.download = `telegram_sessions_${accountIds.length}_akun.${format}`;
-      }
+      a.download = finalFilename;
       document.body.appendChild(a);
       a.click();
       a.remove();
       window.URL.revokeObjectURL(url);
       const formatLabel = format === 'nicegram' ? 'Nicegram ZIP' : `.${format}`;
-      showToast(`File export ${accountIds.length} akun (${formatLabel}) berhasil diunduh!`, 'success');
+      const msg = savedPath
+        ? `Tersimpan di ${savedPath} & diunduh (${accountIds.length} akun)`
+        : `File export ${accountIds.length} akun (${formatLabel}) berhasil diunduh!`;
+      showToast(msg, 'success');
       window.closeExportModal();
     }
   } catch (e) {
@@ -1207,6 +1329,54 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   initExportChecklist();
+
+  const exportFilenameInput = document.getElementById('export-filename-input');
+  const exportFilenameAutoBtn = document.getElementById('export-filename-auto-btn');
+  const exportAutoSaveChk = document.getElementById('export-auto-save-chk');
+  const exportAlsoDownloadChk = document.getElementById('export-also-download-chk');
+  const exportSaveDirInput = document.getElementById('export-save-dir-input');
+
+  if (exportFilenameInput) {
+    exportFilenameInput.addEventListener('input', (e) => {
+      exportFilenameManuallyEdited = Boolean(e.target.value.trim());
+    });
+  }
+  if (exportFilenameAutoBtn) {
+    exportFilenameAutoBtn.addEventListener('click', () => {
+      exportFilenameManuallyEdited = false;
+      syncAutoExportFilename(true);
+    });
+  }
+  if (exportAutoSaveChk) {
+    exportAutoSaveChk.addEventListener('change', updateExportSaveUI);
+  }
+  if (exportAlsoDownloadChk) {
+    exportAlsoDownloadChk.addEventListener('change', updateExportSaveUI);
+  }
+  if (exportSaveDirInput) {
+    const persistSaveDir = () => {
+      const v = exportSaveDirInput.value.trim();
+      if (v) localStorage.setItem('export_save_dir', v);
+    };
+    exportSaveDirInput.addEventListener('change', persistSaveDir);
+    exportSaveDirInput.addEventListener('blur', persistSaveDir);
+  }
+
+  // Sync default export folder from server settings (best-effort)
+  if (localStorage.getItem('token')) {
+    fetch('/api/accounts/export/config', { headers: getAuthHeaders() })
+      .then(r => (r.ok ? r.json() : null))
+      .then(cfg => {
+        if (cfg && cfg.default_save_dir) {
+          defaultExportSaveDir = cfg.default_save_dir;
+          if (exportSaveDirInput && !localStorage.getItem('export_save_dir')) {
+            exportSaveDirInput.value = defaultExportSaveDir;
+          }
+        }
+      })
+      .catch(() => {});
+  }
+
   if (exportDownloadBtn) {
     exportDownloadBtn.addEventListener('click', () => executeExportAction('download'));
   }
