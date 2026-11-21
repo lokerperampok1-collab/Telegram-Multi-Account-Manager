@@ -5,12 +5,10 @@
   let activeTransferJobId = null;
   let transferPollTimer = null;
 
-  // Batch queue state (multi-account sequential transfer)
+  // Batch state (multi-account parallel transfer)
+  let activeBatchId = null;
+  let batchPollTimer = null;
   let batchActive = false;
-  let batchCancelled = false;
-  let batchQueue = [];
-  let batchTotal = 0;
-  let batchResults = [];
 
   function getAuthOnlyHeaders() {
     const token = localStorage.getItem('token');
@@ -197,112 +195,333 @@
 
     if (otpBox) otpBox.style.display = status === 'waiting_code' ? 'block' : 'none';
     if (twofaBox) twofaBox.style.display = status === 'waiting_2fa' ? 'block' : 'none';
-    if (outputBox) outputBox.style.display = (!batchActive && job.output_ready) ? 'block' : 'none';
+    if (outputBox) outputBox.style.display = job.output_ready ? 'block' : 'none';
 
     if (isTerminal) {
       stopPolling();
       if (job.dashboard_updated && window.loadAccounts) {
         window.loadAccounts();
       }
-      if (batchActive) {
-        const label = job.display_name || job.phone_masked || `Akun #${job.account_id}`;
-        const ok = status === 'completed' || status === 'partial_logout_uncertain';
-        batchResults.push({
-          label,
-          ok,
-          status,
-          message: job.message || status
-        });
-        renderBatchSummary();
-        if (!batchCancelled && batchQueue.length > 0) {
-          if (startBtn) startBtn.disabled = true;
-          if (cancelBtn) cancelBtn.style.display = 'inline-flex';
-          setTimeout(runNextBatchItem, 600);
-        } else {
-          finishBatch();
-        }
-        return;
+      if (status === 'completed' || status === 'partial_logout_uncertain') {
+        loadTransferAccounts();
       }
     }
 
     if (startBtn) startBtn.disabled = !isTerminal;
-    if (cancelBtn) cancelBtn.style.display = isTerminal ? 'none' : 'inline-flex';
+    if (cancelBtn) {
+      cancelBtn.innerHTML = '<span>✕ Batalkan</span>';
+      cancelBtn.style.display = isTerminal ? 'none' : 'inline-flex';
+    }
   }
 
-  function renderBatchSummary() {
-    const box = document.getElementById('transfer-batch-summary');
-    const hdr = document.getElementById('transfer-batch-header');
-    const list = document.getElementById('transfer-batch-results');
-    if (!box || !hdr || !list) return;
-
-    box.style.display = 'block';
-    const doneCount = batchResults.length;
-    const okCount = batchResults.filter(r => r.ok).length;
-    const failCount = doneCount - okCount;
-    const stateLabel = batchActive ? (batchCancelled ? 'Dibatalkan' : 'Sedang Berjalan') : 'Selesai';
-    hdr.textContent = `Batch Transfer (${stateLabel}): ${doneCount} / ${batchTotal} | Berhasil: ${okCount} | Gagal: ${failCount}`;
-
-    list.innerHTML = batchResults.map(r => {
-      const color = r.ok ? 'var(--accent-green)' : 'var(--accent-rose)';
-      const icon = r.ok ? '✅' : '❌';
-      return `<div style="padding: 4px 8px; border-radius: 4px; background: rgba(255,255,255,0.03); color: ${color};">${icon} <strong>${escapeHtml(r.label)}</strong>: ${escapeHtml(r.message)}</div>`;
-    }).join('');
-    list.scrollTop = list.scrollHeight;
+  function applyStatusBadgeStyle(badge, status) {
+    if (!badge) return;
+    badge.textContent = status.toUpperCase().replace(/_/g, ' ');
+    if (status === 'completed') {
+      badge.style.background = 'rgba(16,185,129,0.2)';
+      badge.style.color = 'var(--accent-green)';
+      badge.style.borderColor = 'rgba(16,185,129,0.4)';
+    } else if (status === 'failed' || status === 'cancelled') {
+      badge.style.background = 'rgba(239,68,68,0.2)';
+      badge.style.color = 'var(--accent-rose)';
+      badge.style.borderColor = 'rgba(239,68,68,0.4)';
+    } else if (status === 'waiting_code' || status === 'waiting_2fa' || status === 'partial_logout_uncertain') {
+      badge.style.background = 'rgba(245,158,11,0.2)';
+      badge.style.color = 'var(--accent-amber)';
+      badge.style.borderColor = 'rgba(245,158,11,0.4)';
+    } else if (status === 'queued') {
+      badge.style.background = 'rgba(148,163,184,0.15)';
+      badge.style.color = 'var(--text-secondary)';
+      badge.style.borderColor = 'rgba(148,163,184,0.3)';
+    } else {
+      badge.style.background = 'rgba(0,212,255,0.15)';
+      badge.style.color = 'var(--accent-cyan)';
+      badge.style.borderColor = 'rgba(0,212,255,0.3)';
+    }
   }
 
-  function finishBatch() {
-    batchActive = false;
-    const okCount = batchResults.filter(r => r.ok).length;
-    const failCount = batchResults.length - okCount;
-    const startBtn = document.getElementById('transfer-start-btn');
-    const cancelBtn = document.getElementById('transfer-cancel-btn');
-    if (startBtn) startBtn.disabled = false;
-    if (cancelBtn) cancelBtn.style.display = 'none';
-    renderBatchSummary();
-    loadTransferAccounts();
-    if (window.loadAccounts) window.loadAccounts();
-    showToast(`Batch transfer selesai: ${okCount} berhasil, ${failCount} gagal`, failCount > 0 ? 'warning' : 'success');
-  }
-
-  async function runNextBatchItem() {
-    if (batchCancelled || batchQueue.length === 0) {
-      finishBatch();
+  async function downloadJobSession(jobId) {
+    const res = await fetch(`/api/transfer/download/${jobId}`, { headers: getAuthOnlyHeaders() });
+    if (!res.ok) {
+      showToast('File sesi belum tersedia atau sudah dihapus', 'error');
       return;
     }
+    const blob = await res.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `new_auth_session_${jobId}.session`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(url);
+    showToast('File .session baru berhasil diunduh!', 'success');
+  }
 
-    const accountId = batchQueue.shift();
-    const autoLogout = document.getElementById('transfer-auto-logout-chk')?.checked ?? true;
-    const saveDash = document.getElementById('transfer-save-dashboard-chk')?.checked ?? true;
+  async function copyJobStringSession(jobId) {
+    const res = await fetch(`/api/transfer/string/${jobId}`, { headers: getAuthOnlyHeaders() });
+    const data = await res.json();
+    if (res.ok && data.string_session) {
+      await navigator.clipboard.writeText(data.string_session);
+      showToast('StringSession baru berhasil disalin ke clipboard!', 'success');
+    } else {
+      showToast(data.detail || 'Gagal mengambil StringSession', 'error');
+    }
+  }
 
-    const formData = new FormData();
-    formData.append('source_type', 'dashboard');
-    formData.append('auto_logout_old', autoLogout ? 'true' : 'false');
-    formData.append('save_to_dashboard', saveDash ? 'true' : 'false');
-    formData.append('dashboard_account_id', String(accountId));
+  function createParallelJobCard(job) {
+    const card = document.createElement('div');
+    card.dataset.jobId = job.job_id;
+    card.style.cssText = 'padding: 10px 12px; border-radius: 8px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); display: flex; flex-direction: column; gap: 6px;';
 
-    try {
-      const res = await fetch('/api/transfer/start', {
+    card.innerHTML = `
+      <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap;">
+        <div class="tp-title" style="font-weight: 600; font-size: 0.82rem; color: var(--text-primary); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"></div>
+        <div style="display: flex; align-items: center; gap: 6px; flex-shrink: 0;">
+          <span class="tp-badge" style="padding: 2px 8px; border-radius: 10px; font-size: 0.7rem; font-weight: 700; border: 1px solid transparent;"></span>
+          <button type="button" class="btn btn-danger btn-sm tp-cancel-btn" style="padding: 2px 8px; font-size: 0.7rem; display: none;">✕</button>
+        </div>
+      </div>
+      <div style="width: 100%; height: 5px; background: rgba(255,255,255,0.08); border-radius: 999px; overflow: hidden;">
+        <div class="tp-bar" style="width: 0%; height: 100%; background: linear-gradient(90deg, var(--accent-cyan), var(--accent-green)); transition: width 0.25s ease;"></div>
+      </div>
+      <div class="tp-msg" style="font-size: 0.76rem; color: var(--text-secondary);"></div>
+      <div class="tp-hint" style="display: none; font-size: 0.72rem; color: var(--accent-amber);"></div>
+      <div class="tp-otp-wrap" style="display: none; margin-top: 4px;">
+        <div style="display: flex; gap: 6px;">
+          <input type="text" class="form-input tp-otp-input" placeholder="Masukkan kode OTP (5-6 digit)..." style="flex: 1; padding: 5px 8px; font-size: 0.78rem; font-family: 'JetBrains Mono', monospace;">
+          <button type="button" class="btn btn-primary btn-sm tp-otp-submit" style="padding: 5px 10px; font-size: 0.75rem;">Kirim OTP</button>
+        </div>
+      </div>
+      <div class="tp-2fa-wrap" style="display: none; margin-top: 4px;">
+        <div style="display: flex; gap: 6px;">
+          <input type="password" class="form-input tp-2fa-input" placeholder="Masukkan password 2FA..." style="flex: 1; padding: 5px 8px; font-size: 0.78rem;">
+          <button type="button" class="btn btn-primary btn-sm tp-2fa-submit" style="padding: 5px 10px; font-size: 0.75rem;">Verifikasi 2FA</button>
+        </div>
+      </div>
+      <div class="tp-output-wrap" style="display: none; gap: 6px; flex-wrap: wrap; margin-top: 2px;">
+        <button type="button" class="btn btn-primary btn-sm tp-dl-btn" style="padding: 4px 10px; font-size: 0.73rem;">⬇️ .session</button>
+        <button type="button" class="btn btn-secondary btn-sm tp-copy-btn" style="padding: 4px 10px; font-size: 0.73rem;">📋 Salin String</button>
+      </div>
+    `;
+
+    card.querySelector('.tp-cancel-btn').addEventListener('click', async () => {
+      const res = await fetch(`/api/transfer/cancel/${job.job_id}`, {
         method: 'POST',
-        headers: getAuthOnlyHeaders(),
-        body: formData
+        headers: getAuthHeaders()
+      });
+      if (res.ok) {
+        const data = await res.json();
+        updateParallelJobCard(card, data.job);
+      }
+    });
+
+    card.querySelector('.tp-otp-submit').addEventListener('click', async () => {
+      const input = card.querySelector('.tp-otp-input');
+      const code = (input?.value || '').trim();
+      if (!code) return;
+      const res = await fetch(`/api/transfer/submit-code/${job.job_id}`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ code })
       });
       const data = await res.json();
-      if (!res.ok) {
-        const acc = cachedTransferAccounts.find(a => a.id === accountId);
-        const label = acc ? (acc.display_name || acc.phone_number || `Akun #${accountId}`) : `Akun #${accountId}`;
-        batchResults.push({ label, ok: false, status: 'failed', message: data.detail || 'Gagal memulai transfer' });
-        renderBatchSummary();
-        setTimeout(runNextBatchItem, 400);
-        return;
+      if (res.ok) {
+        input.value = '';
+        showToast('Kode OTP dikirim!', 'success');
+      } else {
+        showToast(data.detail || 'Gagal mengirim OTP', 'error');
       }
-      activeTransferJobId = data.job.job_id;
-      renderTransferJobState(data.job);
-      startPolling(activeTransferJobId);
-    } catch (e) {
-      batchResults.push({ label: `Akun #${accountId}`, ok: false, status: 'failed', message: 'Koneksi ke server gagal' });
-      renderBatchSummary();
-      setTimeout(runNextBatchItem, 400);
+    });
+
+    card.querySelector('.tp-2fa-submit').addEventListener('click', async () => {
+      const input = card.querySelector('.tp-2fa-input');
+      const password = input?.value || '';
+      if (!password) return;
+      const res = await fetch(`/api/transfer/submit-2fa/${job.job_id}`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ password })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        input.value = '';
+        showToast('Password 2FA dikirim!', 'success');
+      } else {
+        showToast(data.detail || 'Gagal mengirim password 2FA', 'error');
+      }
+    });
+
+    card.querySelector('.tp-dl-btn').addEventListener('click', () => downloadJobSession(job.job_id));
+    card.querySelector('.tp-copy-btn').addEventListener('click', () => copyJobStringSession(job.job_id));
+
+    return card;
+  }
+
+  function updateParallelJobCard(card, job) {
+    const status = job.status;
+    const isTerminal = ['completed', 'partial_logout_uncertain', 'failed', 'cancelled'].includes(status);
+
+    const titleEl = card.querySelector('.tp-title');
+    const badgeEl = card.querySelector('.tp-badge');
+    const barEl = card.querySelector('.tp-bar');
+    const msgEl = card.querySelector('.tp-msg');
+    const hintEl = card.querySelector('.tp-hint');
+    const cancelBtn = card.querySelector('.tp-cancel-btn');
+    const otpWrap = card.querySelector('.tp-otp-wrap');
+    const twofaWrap = card.querySelector('.tp-2fa-wrap');
+    const outWrap = card.querySelector('.tp-output-wrap');
+
+    const titleParts = [];
+    titleParts.push(job.display_name || `Akun #${job.dashboard_account_id || job.account_id || job.job_id}`);
+    if (job.phone_masked) titleParts.push(`(${job.phone_masked})`);
+    if (job.account_id) titleParts.push(`[TG: ${job.account_id}]`);
+    if (titleEl) titleEl.textContent = titleParts.join(' ');
+
+    applyStatusBadgeStyle(badgeEl, status);
+    if (barEl) barEl.style.width = `${job.progress_pct || 0}%`;
+    if (msgEl) msgEl.textContent = job.message || '-';
+
+    if (hintEl) {
+      if (job.code_delivery_hint && status === 'waiting_code') {
+        hintEl.style.display = 'block';
+        hintEl.textContent = `📩 ${job.code_delivery_hint}`;
+      } else {
+        hintEl.style.display = 'none';
+      }
     }
+
+    if (cancelBtn) cancelBtn.style.display = isTerminal ? 'none' : 'inline-flex';
+    if (otpWrap) otpWrap.style.display = status === 'waiting_code' ? 'block' : 'none';
+    if (twofaWrap) twofaWrap.style.display = status === 'waiting_2fa' ? 'block' : 'none';
+    if (outWrap) outWrap.style.display = job.output_ready ? 'flex' : 'none';
+  }
+
+  function renderParallelBatchState(batch) {
+    const panel = document.getElementById('transfer-progress-panel');
+    const badge = document.getElementById('transfer-status-badge');
+    const meta = document.getElementById('transfer-account-meta');
+    const bar = document.getElementById('transfer-progress-bar');
+    const msgEl = document.getElementById('transfer-status-message');
+    const hintEl = document.getElementById('transfer-delivery-hint');
+    const otpBox = document.getElementById('transfer-otp-box');
+    const twofaBox = document.getElementById('transfer-2fa-box');
+    const outputBox = document.getElementById('transfer-output-box');
+    const batchBox = document.getElementById('transfer-batch-summary');
+    const hdr = document.getElementById('transfer-batch-header');
+    const list = document.getElementById('transfer-batch-results');
+    const startBtn = document.getElementById('transfer-start-btn');
+    const cancelBtn = document.getElementById('transfer-cancel-btn');
+
+    if (!panel || !batchBox || !list) return;
+    panel.style.display = 'block';
+    batchBox.style.display = 'block';
+    if (hintEl) hintEl.style.display = 'none';
+    if (otpBox) otpBox.style.display = 'none';
+    if (twofaBox) twofaBox.style.display = 'none';
+    if (outputBox) outputBox.style.display = 'none';
+
+    const jobs = batch.jobs || [];
+    const okCount = (batch.completed || 0) + (batch.partial || 0);
+    const total = Math.max(batch.total || jobs.length, 1);
+    const avgPct = Math.round(jobs.reduce((sum, j) => sum + (j.progress_pct || 0), 0) / total);
+
+    if (bar) bar.style.width = `${avgPct}%`;
+    if (badge) {
+      if (!batch.all_terminal) {
+        badge.textContent = 'PARALEL BERJALAN';
+        badge.style.background = 'rgba(0,212,255,0.15)';
+        badge.style.color = 'var(--accent-cyan)';
+        badge.style.borderColor = 'rgba(0,212,255,0.3)';
+      } else if ((batch.failed || 0) === 0 && (batch.cancelled || 0) === 0) {
+        badge.textContent = 'SELESAI';
+        badge.style.background = 'rgba(16,185,129,0.2)';
+        badge.style.color = 'var(--accent-green)';
+        badge.style.borderColor = 'rgba(16,185,129,0.4)';
+      } else {
+        badge.textContent = 'SELESAI';
+        badge.style.background = 'rgba(245,158,11,0.2)';
+        badge.style.color = 'var(--accent-amber)';
+        badge.style.borderColor = 'rgba(245,158,11,0.4)';
+      }
+    }
+
+    if (meta) {
+      meta.textContent = `Aktif: ${batch.running} • Antri Slot: ${batch.queued} • Selesai: ${batch.done}/${batch.total}`;
+    }
+
+    const modeLabel = batch.max_concurrent === 0 ? 'Semua Sekaligus' : `Maks ${batch.max_concurrent} bersamaan`;
+    if (msgEl) {
+      let msg = `Mode Paralel (${modeLabel}) — Berhasil: ${okCount} | Gagal: ${batch.failed}`;
+      if (batch.cancelled) msg += ` | Batal: ${batch.cancelled}`;
+      if (batch.waiting_input) msg += ` | Butuh OTP/2FA: ${batch.waiting_input}`;
+      msgEl.textContent = msg;
+    }
+
+    if (hdr) {
+      const skipTxt = batch.skipped && batch.skipped.length ? ` | Dilewati: ${batch.skipped.length}` : '';
+      hdr.textContent = `Transfer Paralel: ${batch.done} / ${batch.total} selesai | Aktif: ${batch.running} | Berhasil: ${okCount} | Gagal: ${batch.failed}${skipTxt}`;
+    }
+
+    if (batch.skipped && batch.skipped.length) {
+      batch.skipped.forEach(sk => {
+        const skipKey = `skip_${sk.dashboard_account_id}`;
+        if (!list.querySelector(`[data-skipped-id="${skipKey}"]`)) {
+          const skipEl = document.createElement('div');
+          skipEl.dataset.skippedId = skipKey;
+          skipEl.style.cssText = 'padding: 6px 10px; border-radius: 6px; background: rgba(245, 158, 11, 0.08); border: 1px solid rgba(245, 158, 11, 0.25); color: var(--accent-amber); font-size: 0.76rem;';
+          skipEl.textContent = `⚠️ Akun #${sk.dashboard_account_id} dilewati: ${sk.error}`;
+          list.appendChild(skipEl);
+        }
+      });
+    }
+
+    jobs.forEach(job => {
+      let card = list.querySelector(`[data-job-id="${job.job_id}"]`);
+      if (!card) {
+        card = createParallelJobCard(job);
+        list.appendChild(card);
+      }
+      updateParallelJobCard(card, job);
+    });
+
+    if (startBtn) startBtn.disabled = !batch.all_terminal;
+    if (cancelBtn) {
+      cancelBtn.innerHTML = '<span>✕ Batalkan Semua</span>';
+      cancelBtn.style.display = batch.all_terminal ? 'none' : 'inline-flex';
+    }
+
+    if (batch.all_terminal) {
+      const wasActive = batchActive;
+      batchActive = false;
+      stopBatchPolling();
+      if (wasActive) {
+        loadTransferAccounts();
+        if (window.loadAccounts) window.loadAccounts();
+        showToast(`Transfer paralel selesai: ${okCount} berhasil, ${batch.failed || 0} gagal`, (batch.failed || 0) > 0 ? 'warning' : 'success');
+      }
+    }
+  }
+
+  function stopBatchPolling() {
+    if (batchPollTimer) {
+      clearInterval(batchPollTimer);
+      batchPollTimer = null;
+    }
+  }
+
+  function startBatchPolling(batchId) {
+    stopBatchPolling();
+    batchPollTimer = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/transfer/batch/${batchId}`, { headers: getAuthOnlyHeaders() });
+        if (!res.ok) return;
+        const batch = await res.json();
+        renderParallelBatchState(batch);
+      } catch (e) {
+        // ignore transient errors
+      }
+    }, 1200);
   }
 
   function stopPolling() {
@@ -334,6 +553,11 @@
     const autoLogout = document.getElementById('transfer-auto-logout-chk')?.checked ?? true;
     const saveDash = document.getElementById('transfer-save-dashboard-chk')?.checked ?? true;
     const batchBox = document.getElementById('transfer-batch-summary');
+    const batchResultsEl = document.getElementById('transfer-batch-results');
+    const startBtn = document.getElementById('transfer-start-btn');
+
+    stopPolling();
+    stopBatchPolling();
 
     if (mode === 'dashboard') {
       if (selectedTransferAccountIds.size === 0) {
@@ -341,24 +565,51 @@
         return;
       }
       if (selectedTransferAccountIds.size > 1) {
-        batchActive = true;
-        batchCancelled = false;
-        batchQueue = Array.from(selectedTransferAccountIds);
-        batchTotal = batchQueue.length;
-        batchResults = [];
-        const startBtn = document.getElementById('transfer-start-btn');
-        const cancelBtn = document.getElementById('transfer-cancel-btn');
+        const concurrencyRaw = parseInt(document.getElementById('transfer-concurrency-select')?.value ?? '10', 10);
+        const maxConcurrent = Number.isNaN(concurrencyRaw) ? 10 : concurrencyRaw;
         if (startBtn) startBtn.disabled = true;
-        if (cancelBtn) cancelBtn.style.display = 'inline-flex';
-        renderBatchSummary();
-        runNextBatchItem();
+
+        try {
+          const res = await fetch('/api/transfer/start-batch', {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: JSON.stringify({
+              account_ids: Array.from(selectedTransferAccountIds),
+              auto_logout_old: autoLogout,
+              save_to_dashboard: saveDash,
+              max_concurrent: maxConcurrent
+            })
+          });
+          const data = await res.json();
+          if (!res.ok) {
+            showToast(data.detail || 'Gagal memulai transfer paralel', 'error');
+            if (startBtn) startBtn.disabled = false;
+            return;
+          }
+
+          activeTransferJobId = null;
+          activeBatchId = data.batch.batch_id;
+          batchActive = true;
+          if (batchResultsEl) batchResultsEl.innerHTML = '';
+          renderParallelBatchState(data.batch);
+          if (!data.batch.all_terminal) {
+            startBatchPolling(activeBatchId);
+          }
+          if (data.batch.skipped && data.batch.skipped.length > 0) {
+            showToast(`${data.batch.skipped.length} akun dilewati (sedang diproses atau tidak ditemukan)`, 'warning');
+          }
+        } catch (e) {
+          showToast('Koneksi ke server gagal', 'error');
+          if (startBtn) startBtn.disabled = false;
+        }
         return;
       }
     }
 
+    activeBatchId = null;
     batchActive = false;
-    batchCancelled = false;
     if (batchBox) batchBox.style.display = 'none';
+    if (batchResultsEl) batchResultsEl.innerHTML = '';
 
     const formData = new FormData();
     formData.append('source_type', mode);
@@ -384,7 +635,6 @@
       formData.append('string_session', strVal);
     }
 
-    const startBtn = document.getElementById('transfer-start-btn');
     if (startBtn) startBtn.disabled = true;
 
     try {
@@ -443,8 +693,18 @@
     const cancelBtn = document.getElementById('transfer-cancel-btn');
     if (cancelBtn) {
       cancelBtn.addEventListener('click', async () => {
-        batchCancelled = true;
-        batchQueue = [];
+        if (batchActive && activeBatchId) {
+          const res = await fetch(`/api/transfer/cancel-batch/${activeBatchId}`, {
+            method: 'POST',
+            headers: getAuthHeaders()
+          });
+          if (res.ok) {
+            const data = await res.json();
+            renderParallelBatchState(data.batch);
+            showToast('Semua proses transfer paralel yang masih berjalan dibatalkan', 'info');
+          }
+          return;
+        }
         if (!activeTransferJobId) return;
         const res = await fetch(`/api/transfer/cancel/${activeTransferJobId}`, {
           method: 'POST',

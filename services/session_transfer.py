@@ -35,6 +35,7 @@ TRANSFER_OUTPUT_DIR = Path("sessions") / "transfer_output"
 
 class TransferStatus(str, Enum):
     IDLE = "idle"
+    QUEUED = "queued"
     VALIDATING_OLD = "validating_old"
     REQUESTING_CODE = "requesting_code"
     WAITING_CODE = "waiting_code"
@@ -45,6 +46,14 @@ class TransferStatus(str, Enum):
     PARTIAL_LOGOUT_UNCERTAIN = "partial_logout_uncertain"
     FAILED = "failed"
     CANCELLED = "cancelled"
+
+
+TERMINAL_STATUSES = {
+    TransferStatus.COMPLETED,
+    TransferStatus.PARTIAL_LOGOUT_UNCERTAIN,
+    TransferStatus.FAILED,
+    TransferStatus.CANCELLED,
+}
 
 
 def _mask_phone(phone: Optional[str]) -> str:
@@ -180,14 +189,11 @@ class SessionTransferService:
 
     def __init__(self):
         self._jobs: Dict[str, TransferJob] = {}
-        self._user_locks: Dict[int, asyncio.Lock] = {}
+        self._active_account_jobs: Dict[tuple[int, int], str] = {}
+        self._batches: Dict[str, Dict[str, Any]] = {}
+        self._db_write_lock = asyncio.Lock()
         TRANSFER_WORK_DIR.mkdir(parents=True, exist_ok=True)
         TRANSFER_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-
-    def _get_user_lock(self, user_id: int) -> asyncio.Lock:
-        if user_id not in self._user_locks:
-            self._user_locks[user_id] = asyncio.Lock()
-        return self._user_locks[user_id]
 
     def get_job(self, job_id: str, user_id: int) -> Optional[TransferJob]:
         job = self._jobs.get(job_id)
@@ -210,13 +216,26 @@ class SessionTransferService:
         file_bytes: Optional[bytes] = None,
         auto_logout_old: bool = True,
         save_to_dashboard: bool = True,
+        semaphore: Optional[asyncio.Semaphore] = None,
+        prefetched_account: Optional[Dict[str, Any]] = None,
     ) -> TransferJob:
-        lock = self._get_user_lock(user_id)
-        if lock.locked():
-            raise RuntimeError("Proses transfer sesi lain sedang berjalan untuk akun Anda. Tunggu hingga selesai atau batalkan.")
-
         if not settings.API_ID or not settings.API_HASH:
             raise ValueError("API_ID dan API_HASH belum dikonfigurasi pada server.")
+
+        acc_data: Optional[Dict[str, Any]] = None
+        account_key: Optional[tuple[int, int]] = None
+        if source_type == "dashboard":
+            if not dashboard_account_id:
+                raise ValueError("Pilih akun dari dashboard terlebih dahulu.")
+            account_key = (user_id, dashboard_account_id)
+            existing_job_id = self._active_account_jobs.get(account_key)
+            if existing_job_id:
+                existing_job = self._jobs.get(existing_job_id)
+                if existing_job and existing_job.status not in TERMINAL_STATUSES:
+                    raise RuntimeError("Akun ini sedang dalam proses transfer sesi. Tunggu hingga selesai atau batalkan.")
+            acc_data = prefetched_account or await TelegramAccountModel.get_by_id(dashboard_account_id, user_id)
+            if not acc_data:
+                raise ValueError("Akun tidak ditemukan di dashboard Anda.")
 
         job_id = uuid.uuid4().hex[:12]
         job = TransferJob(
@@ -226,6 +245,14 @@ class SessionTransferService:
             save_to_dashboard=save_to_dashboard,
         )
         job.dashboard_account_id = dashboard_account_id
+        if acc_data:
+            job.display_name = acc_data.get("display_name") or (
+                f"@{acc_data['username']}" if acc_data.get("username") else None
+            ) or acc_data.get("phone_number") or f"Akun #{dashboard_account_id}"
+            job.phone_masked = _mask_phone(acc_data.get("phone_number"))
+            job.username = acc_data.get("username")
+            job.account_id = acc_data.get("telegram_id")
+
         loop = asyncio.get_running_loop()
         job.code_future = loop.create_future()
         job.password_future = loop.create_future()
@@ -239,28 +266,48 @@ class SessionTransferService:
             _validate_sqlite_session_file(work_file_path)
             job.work_file = work_file_path
 
+        if semaphore is not None:
+            job.update(status=TransferStatus.QUEUED, progress_pct=0, message="Menunggu slot paralel...")
+
         self._jobs[job_id] = job
+        if account_key is not None:
+            self._active_account_jobs[account_key] = job_id
 
         async def _runner():
-            async with lock:
-                try:
+            try:
+                if semaphore is not None:
+                    async with semaphore:
+                        if job.cancelled:
+                            raise asyncio.CancelledError()
+                        await self._execute_transfer(
+                            job=job,
+                            source_type=source_type,
+                            dashboard_account_id=dashboard_account_id,
+                            string_session_data=string_session_data,
+                            prefetched_account=acc_data,
+                        )
+                else:
                     await self._execute_transfer(
                         job=job,
                         source_type=source_type,
                         dashboard_account_id=dashboard_account_id,
                         string_session_data=string_session_data,
+                        prefetched_account=acc_data,
                     )
-                except asyncio.CancelledError:
+            except asyncio.CancelledError:
+                if job.status not in TERMINAL_STATUSES:
                     job.update(
                         status=TransferStatus.CANCELLED,
                         progress_pct=0,
                         message="Proses transfer dibatalkan oleh pengguna.",
                     )
-                except Exception as e:
-                    logger.error(f"[Transfer {job_id}] Error: {e}", exc_info=True)
-                    self._handle_error(job, e)
-                finally:
-                    await self._cleanup_job_clients(job)
+            except Exception as e:
+                logger.error(f"[Transfer {job_id}] Error: {e}", exc_info=True)
+                self._handle_error(job, e)
+            finally:
+                if account_key is not None and self._active_account_jobs.get(account_key) == job_id:
+                    self._active_account_jobs.pop(account_key, None)
+                await self._cleanup_job_clients(job)
 
         job.task = asyncio.create_task(_runner())
         return job
@@ -271,6 +318,7 @@ class SessionTransferService:
         source_type: str,
         dashboard_account_id: Optional[int],
         string_session_data: Optional[str],
+        prefetched_account: Optional[Dict[str, Any]] = None,
     ) -> None:
         api_id = settings.API_ID
         api_hash = settings.API_HASH
@@ -281,7 +329,7 @@ class SessionTransferService:
         if source_type == "dashboard":
             if not dashboard_account_id:
                 raise ValueError("Pilih akun dari dashboard terlebih dahulu.")
-            acc = await TelegramAccountModel.get_by_id(dashboard_account_id, job.user_id)
+            acc = prefetched_account or await TelegramAccountModel.get_by_id(dashboard_account_id, job.user_id)
             if not acc:
                 raise ValueError("Akun tidak ditemukan di dashboard Anda.")
             saved_twofa = acc.get("twofa_password")
@@ -506,15 +554,16 @@ class SessionTransferService:
             if phone and not str(phone).startswith("+"):
                 phone = f"+{phone}"
 
-            acc_id, _ = await TelegramAccountModel.upsert(
-                user_id=job.user_id,
-                session_string=encrypted,
-                phone_number=phone,
-                display_name=display_name,
-                username=me.username,
-                telegram_id=me.id,
-                is_active=True,
-            )
+            async with self._db_write_lock:
+                acc_id, _ = await TelegramAccountModel.upsert(
+                    user_id=job.user_id,
+                    session_string=encrypted,
+                    phone_number=phone,
+                    display_name=display_name,
+                    username=me.username,
+                    telegram_id=me.id,
+                    is_active=True,
+                )
             # Disconnect old active client in client_manager if cached
             old_cached = client_manager._active_clients.pop(acc_id, None)
             if old_cached:
@@ -603,6 +652,8 @@ class SessionTransferService:
         job = self.get_job(job_id, user_id)
         if not job:
             raise ValueError("Job transfer tidak ditemukan.")
+        if job.status in TERMINAL_STATUSES:
+            return job
         job.cancelled = True
         if job.task and not job.task.done():
             job.task.cancel()
@@ -613,6 +664,105 @@ class SessionTransferService:
         )
         job.update(status=TransferStatus.CANCELLED, progress_pct=0, message=msg)
         return job
+
+    async def start_batch_transfer(
+        self,
+        user_id: int,
+        dashboard_account_ids: list[int],
+        auto_logout_old: bool = True,
+        save_to_dashboard: bool = True,
+        max_concurrent: int = 10,
+    ) -> Dict[str, Any]:
+        if not settings.API_ID or not settings.API_HASH:
+            raise ValueError("API_ID dan API_HASH belum dikonfigurasi pada server.")
+
+        seen_ids = set()
+        unique_ids = []
+        for aid in dashboard_account_ids or []:
+            if aid not in seen_ids:
+                seen_ids.add(aid)
+                unique_ids.append(aid)
+
+        if not unique_ids:
+            raise ValueError("Pilih minimal satu akun dashboard.")
+
+        semaphore = asyncio.Semaphore(max_concurrent) if (max_concurrent and max_concurrent > 0) else None
+        started_jobs = []
+        skipped = []
+
+        for acc_id in unique_ids:
+            try:
+                job = await self.start_transfer(
+                    user_id=user_id,
+                    source_type="dashboard",
+                    dashboard_account_id=acc_id,
+                    auto_logout_old=auto_logout_old,
+                    save_to_dashboard=save_to_dashboard,
+                    semaphore=semaphore,
+                )
+                started_jobs.append(job)
+            except (ValueError, RuntimeError) as e:
+                skipped.append({"dashboard_account_id": acc_id, "error": str(e)})
+
+        if not started_jobs:
+            first_err = skipped[0]["error"] if skipped else "Tidak ada job yang dapat dimulai."
+            raise ValueError(first_err)
+
+        batch_id = uuid.uuid4().hex[:12]
+        self._batches[batch_id] = {
+            "user_id": user_id,
+            "job_ids": [j.job_id for j in started_jobs],
+            "max_concurrent": max_concurrent,
+            "skipped": skipped,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+        return self.get_batch_status(batch_id, user_id)
+
+    def get_batch_status(self, batch_id: str, user_id: int) -> Optional[Dict[str, Any]]:
+        batch = self._batches.get(batch_id)
+        if not batch or batch["user_id"] != user_id:
+            return None
+
+        jobs = [self._jobs[jid].to_public_dict() for jid in batch["job_ids"] if jid in self._jobs]
+        total = len(jobs)
+        completed = sum(1 for j in jobs if j["status"] == TransferStatus.COMPLETED.value)
+        partial = sum(1 for j in jobs if j["status"] == TransferStatus.PARTIAL_LOGOUT_UNCERTAIN.value)
+        failed = sum(1 for j in jobs if j["status"] == TransferStatus.FAILED.value)
+        cancelled = sum(1 for j in jobs if j["status"] == TransferStatus.CANCELLED.value)
+        waiting_input = sum(1 for j in jobs if j["status"] in (TransferStatus.WAITING_CODE.value, TransferStatus.WAITING_2FA.value))
+        queued = sum(1 for j in jobs if j["status"] == TransferStatus.QUEUED.value)
+        done = completed + partial + failed + cancelled
+        running = total - done - queued
+        all_terminal = total > 0 and done == total
+
+        return {
+            "batch_id": batch_id,
+            "max_concurrent": batch["max_concurrent"],
+            "total": total,
+            "done": done,
+            "completed": completed,
+            "partial": partial,
+            "failed": failed,
+            "cancelled": cancelled,
+            "waiting_input": waiting_input,
+            "running": running,
+            "queued": queued,
+            "all_terminal": all_terminal,
+            "skipped": batch["skipped"],
+            "jobs": jobs,
+        }
+
+    async def cancel_batch(self, batch_id: str, user_id: int) -> Dict[str, Any]:
+        batch = self._batches.get(batch_id)
+        if not batch or batch["user_id"] != user_id:
+            raise ValueError("Batch transfer tidak ditemukan.")
+
+        for jid in batch["job_ids"]:
+            try:
+                await self.cancel_job(jid, user_id)
+            except ValueError:
+                pass
+        return self.get_batch_status(batch_id, user_id)
 
     def delete_output_file(self, job_id: str, user_id: int) -> bool:
         job = self.get_job(job_id, user_id)

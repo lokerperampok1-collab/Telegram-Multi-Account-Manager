@@ -1,7 +1,7 @@
-from typing import Optional
+from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException, Form, File, UploadFile
 from fastapi.responses import Response, FileResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from services.auth_service import get_current_user
 from services.session_transfer import session_transfer_service
@@ -20,6 +20,13 @@ class SubmitCodeRequest(BaseModel):
 
 class Submit2FARequest(BaseModel):
     password: str
+
+
+class StartBatchTransferRequest(BaseModel):
+    account_ids: List[int]
+    auto_logout_old: bool = True
+    save_to_dashboard: bool = True
+    max_concurrent: int = Field(default=10, ge=0, le=100)
 
 
 @router.post("/start")
@@ -58,6 +65,47 @@ async def start_transfer(
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Gagal memulai transfer: {str(e)}")
+
+
+@router.post("/start-batch")
+async def start_batch_transfer(req: StartBatchTransferRequest, current_user: dict = Depends(get_current_user)):
+    """Starts parallel session transfers for multiple dashboard accounts concurrently."""
+    try:
+        batch = await session_transfer_service.start_batch_transfer(
+            user_id=current_user["id"],
+            dashboard_account_ids=req.account_ids,
+            auto_logout_old=req.auto_logout_old,
+            save_to_dashboard=req.save_to_dashboard,
+            max_concurrent=req.max_concurrent,
+        )
+        return {"status": "success", "batch": batch}
+    except RuntimeError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Gagal memulai transfer paralel: {str(e)}")
+
+
+@router.get("/batch/{batch_id}")
+async def get_batch_transfer_status(batch_id: str, current_user: dict = Depends(get_current_user)):
+    batch = session_transfer_service.get_batch_status(batch_id, current_user["id"])
+    if not batch:
+        raise HTTPException(status_code=404, detail="Batch transfer tidak ditemukan.")
+    return Response(
+        content=json_dumps(batch),
+        media_type="application/json",
+        headers=NO_CACHE_HEADERS,
+    )
+
+
+@router.post("/cancel-batch/{batch_id}")
+async def cancel_batch_transfer(batch_id: str, current_user: dict = Depends(get_current_user)):
+    try:
+        batch = await session_transfer_service.cancel_batch(batch_id, current_user["id"])
+        return {"status": "success", "batch": batch}
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
 
 
 @router.get("/status/{job_id}")
@@ -141,3 +189,4 @@ async def delete_transferred_output(job_id: str, current_user: dict = Depends(ge
         return {"status": "success", "deleted": deleted}
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
+
