@@ -1955,6 +1955,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const change2faSelectOnline = document.getElementById('change2fa-select-online');
   const change2faSearchAccounts = document.getElementById('change2fa-search-accounts');
   const startChange2faBtn = document.getElementById('start-change2fa-btn');
+  const startDisable2faBtn = document.getElementById('start-disable2fa-btn');
   const change2faResults = document.getElementById('change2fa-results');
 
   function updateTemplateButtonsHighlight(val) {
@@ -1998,12 +1999,14 @@ document.addEventListener('DOMContentLoaded', () => {
   const oldPreset0707 = document.getElementById('old2fa-preset-0707');
   const oldPreset26 = document.getElementById('old2fa-preset-26');
   const oldPreset7 = document.getElementById('old2fa-preset-7');
+  const oldPreset466 = document.getElementById('old2fa-preset-466');
 
   if (change2faCurrentPass) {
     if (oldPresetAuto) oldPresetAuto.addEventListener('click', () => { change2faCurrentPass.value = ''; });
     if (oldPreset0707) oldPreset0707.addEventListener('click', () => { change2faCurrentPass.value = '0707'; });
     if (oldPreset26) oldPreset26.addEventListener('click', () => { change2faCurrentPass.value = '26'; });
     if (oldPreset7) oldPreset7.addEventListener('click', () => { change2faCurrentPass.value = '7'; });
+    if (oldPreset466) oldPreset466.addEventListener('click', () => { change2faCurrentPass.value = '466'; });
   }
 
   let cachedChange2faAccounts = [];
@@ -2075,6 +2078,7 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       startChange2faBtn.disabled = true;
+      if (startDisable2faBtn) startDisable2faBtn.disabled = true;
       startChange2faBtn.innerHTML = `<div class="spinner"></div> Mengatur sandi 2FA ke "${escapeHtml(newPass)}"...`;
       change2faResults.style.display = 'flex';
       change2faResults.innerHTML = `<div style="color: var(--text-secondary); padding: 8px;">Memproses pergantian sandi 2FA ke <strong>"${escapeHtml(newPass)}"</strong>... Mohon tunggu.</div>`;
@@ -2142,7 +2146,104 @@ document.addEventListener('DOMContentLoaded', () => {
         change2faResults.innerHTML = '<div style="color: var(--accent-rose); padding: 8px;">Koneksi server gagal.</div>';
       } finally {
         startChange2faBtn.disabled = false;
+        if (startDisable2faBtn) startDisable2faBtn.disabled = false;
         startChange2faBtn.innerHTML = '<span>🔐 Terapkan Sandi 2FA Sekarang</span>';
+        if (window.OperationManager) {
+          window.OperationManager.setFinished('cancel-change2fa-btn');
+        }
+      }
+    });
+  }
+
+  if (startDisable2faBtn && change2faResults) {
+    startDisable2faBtn.addEventListener('click', async () => {
+      let targetIds = null;
+      if (change2faRadioSelected && change2faRadioSelected.checked) {
+        const checkedBoxes = document.querySelectorAll('.change2fa-acc-checkbox:checked');
+        targetIds = Array.from(checkedBoxes).map(cb => parseInt(cb.value, 10));
+        if (targetIds.length === 0) {
+          showToast('Pilih minimal satu akun target', 'warning');
+          return;
+        }
+      }
+
+      const oldPass = change2faCurrentPass ? change2faCurrentPass.value.trim() : '';
+      const parsed2faDelay = change2faDelay ? parseInt(change2faDelay.value, 10) : 0;
+      const delaySec = Number.isNaN(parsed2faDelay) ? 0 : Math.max(0, parsed2faDelay);
+
+      if (!confirm(`Konfirmasi: Matikan (hapus) sandi 2FA pada ${targetIds ? targetIds.length + ' akun terpilih' : 'SEMUA AKUN'}?`)) {
+        return;
+      }
+
+      startDisable2faBtn.disabled = true;
+      if (startChange2faBtn) startChange2faBtn.disabled = true;
+      startDisable2faBtn.innerHTML = '<div class="spinner"></div> Mematikan 2FA...';
+      change2faResults.style.display = 'flex';
+      change2faResults.innerHTML = '<div style="color: var(--text-secondary); padding: 8px;">Memproses penonaktifan 2FA secara paralel... Mohon tunggu.</div>';
+
+      if (window.OperationManager) {
+        window.OperationManager.setRunning('Matikan 2FA Massal', 'cancel-change2fa-btn');
+      }
+
+      try {
+        const res = await fetch('/api/accounts/disable-2fa', {
+          method: 'POST',
+          headers: getAuthHeaders(),
+          body: JSON.stringify({
+            account_ids: targetIds,
+            current_password: oldPass || null,
+            delay_seconds: delaySec
+          })
+        });
+        const data = await res.json();
+
+        if (res.ok && data.results) {
+          const successCount = data.results.filter(r => r.status === 'success').length;
+          const cancelCount = data.results.filter(r => r.status === 'cancelled').length;
+          const failCount = data.results.filter(r => r.status !== 'success' && r.status !== 'cancelled').length;
+
+          const summaryHtml = `
+            <div style="margin-bottom: 10px; padding: 8px 12px; background: rgba(0,0,0,0.3); border-radius: var(--radius-sm); display: flex; justify-content: space-between; font-size: 0.85rem; flex-wrap: wrap; gap: 8px;">
+              <span>Total Akun: <strong>${data.results.length}</strong></span>
+              <span style="color: var(--accent-green);">✓ Berhasil: <strong>${successCount}</strong> akun</span>
+              <span style="color: var(--accent-cyan);">🔓 Status: <strong>Tanpa 2FA</strong></span>
+              ${cancelCount > 0 ? `<span style="color: var(--accent-amber);">⛔ Dihentikan: <strong>${cancelCount}</strong></span>` : ''}
+              ${failCount > 0 ? `<span style="color: var(--accent-rose);">❌ Gagal: <strong>${failCount}</strong></span>` : ''}
+            </div>
+          `;
+
+          change2faResults.innerHTML = summaryHtml + data.results.map(r => {
+            const isOk = r.status === 'success';
+            const isCancelled = r.status === 'cancelled';
+            const badgeClass = isCancelled ? 'waiting' : (isOk ? 'success' : 'error');
+            const badgeText = isCancelled ? '⛔ Dihentikan' : (isOk ? '🔓 Tanpa 2FA' : 'Gagal');
+
+            return `
+              <div class="bulk-item">
+                <div style="flex: 1; min-width: 0;">
+                  <span class="bulk-item-phone">${escapeHtml(r.name || 'Akun')} (${escapeHtml(r.phone || '-')})</span>
+                  <div style="font-size: 0.75rem; color: var(--text-muted);">${escapeHtml(r.message || '')}</div>
+                </div>
+                <div>
+                  <span class="badge-status ${badgeClass}">${badgeText}</span>
+                </div>
+              </div>
+            `;
+          }).join('');
+
+          showToast(`Selesai! ${successCount} akun berhasil dimatikan 2FA-nya`, successCount > 0 ? 'success' : 'warning');
+          if (window.loadAccounts) window.loadAccounts();
+        } else {
+          change2faResults.innerHTML = `<div style="color: var(--accent-rose); padding: 8px;">${escapeHtml(data.detail || 'Gagal mematikan 2FA')}</div>`;
+          showToast(data.detail || 'Gagal mematikan 2FA', 'error');
+        }
+      } catch (err) {
+        showToast('Koneksi server terputus', 'error');
+        change2faResults.innerHTML = '<div style="color: var(--accent-rose); padding: 8px;">Koneksi server gagal.</div>';
+      } finally {
+        startDisable2faBtn.disabled = false;
+        if (startChange2faBtn) startChange2faBtn.disabled = false;
+        startDisable2faBtn.innerHTML = '<span>🔓 Matikan 2FA</span>';
         if (window.OperationManager) {
           window.OperationManager.setFinished('cancel-change2fa-btn');
         }

@@ -1657,6 +1657,43 @@ document.addEventListener('DOMContentLoaded', () => {
     otpSet26Btn.addEventListener('click', () => setSingleAccount2FAFromOtpModal('26'));
   }
 
+  async function disableSingleAccount2FAFromOtpModal() {
+    if (!currentOtpAccountId) return;
+    if (!confirm('Matikan (hapus) kata sandi 2FA pada akun ini?')) return;
+
+    const displayEl = document.getElementById('otp-2fa-badge-display');
+    const resetBtn = document.getElementById('otp-reset-2fa-inline-btn');
+    if (resetBtn) resetBtn.style.display = 'none';
+    if (displayEl) displayEl.innerHTML = '<div class="spinner" style="width:12px;height:12px;display:inline-block;"></div> Mematikan 2FA...';
+
+    try {
+      const res = await fetch(`/api/accounts/${currentOtpAccountId}/disable-2fa`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ current_password: currentExtracted2faPass || null })
+      });
+      const data = await res.json();
+      if (res.ok && data.status === 'success') {
+        renderOtpModal2fa(data);
+        showToast(data.message || '2FA berhasil dimatikan', 'success');
+        const cardBadge = document.getElementById(`twofa-badge-${currentOtpAccountId}`);
+        if (cardBadge) cardBadge.innerHTML = get2FaBadgeHtml(data);
+      } else {
+        const errMsg = data.detail || data.message || 'Gagal mematikan 2FA';
+        if (displayEl) displayEl.innerHTML = `<span style="color: var(--accent-rose);">⚠️ ${escapeHtml(errMsg)}</span>`;
+        showToast(errMsg, 'error');
+      }
+    } catch (err) {
+      if (displayEl) displayEl.innerHTML = '<span style="color: var(--accent-rose);">⚠️ Gagal Koneksi</span>';
+      showToast('Koneksi server gagal', 'error');
+    }
+  }
+
+  const otpDisable2faBtn = document.getElementById('otp-disable-2fa-btn');
+  if (otpDisable2faBtn) {
+    otpDisable2faBtn.addEventListener('click', disableSingleAccount2FAFromOtpModal);
+  }
+
   const otpVerifyCustomBtn = document.getElementById('otp-verify-custom-2fa-btn');
   if (otpVerifyCustomBtn) {
     otpVerifyCustomBtn.addEventListener('click', () => {

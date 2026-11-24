@@ -2035,6 +2035,35 @@ class ClientManager:
             cancel_row_fn=_cancel_row,
         )
 
+    async def _build_2fa_candidates(
+        self,
+        account: dict,
+        user_id: int,
+        current_password: Optional[str] = None
+    ) -> list[str]:
+        """Builds deduplicated list of candidate old 2FA passwords in priority order."""
+        candidates = []
+        if current_password and current_password.strip():
+            candidates.append(current_password.strip())
+
+        saved_pwd = account.get("twofa_password")
+        if saved_pwd and str(saved_pwd) not in candidates:
+            candidates.append(str(saved_pwd))
+
+        for default_cand in ["0707", "26", "7", "466"]:
+            if default_cand not in candidates:
+                candidates.append(default_cand)
+
+        try:
+            user_known_pwds = await TelegramAccountModel.get_distinct_2fa_passwords(user_id)
+            for kp in user_known_pwds:
+                if kp not in candidates and len(candidates) < 10:
+                    candidates.append(kp)
+        except Exception:
+            pass
+
+        return candidates
+
     async def change_account_2fa(
         self,
         account_id: int,
@@ -2100,25 +2129,7 @@ class ClientManager:
                 }
 
             # Case 2: Akun sudah memiliki 2FA -> cari tahu sandi lama secara otomatis atau dari input
-            candidates = []
-            if current_password and current_password.strip():
-                candidates.append(current_password.strip())
-
-            saved_pwd = account.get("twofa_password")
-            if saved_pwd and str(saved_pwd) not in candidates:
-                candidates.append(str(saved_pwd))
-
-            for default_cand in ["0707", "26", "7"]:
-                if default_cand not in candidates:
-                    candidates.append(default_cand)
-
-            try:
-                user_known_pwds = await TelegramAccountModel.get_distinct_2fa_passwords(user_id)
-                for kp in user_known_pwds:
-                    if kp not in candidates and len(candidates) < 8:
-                        candidates.append(kp)
-            except Exception:
-                pass
+            candidates = await self._build_2fa_candidates(account, user_id, current_password)
 
             changed_from = None
             for cand in candidates:
@@ -2185,6 +2196,119 @@ class ClientManager:
         except Exception as e:
             return {"status": "error", "message": f"Gagal mengganti 2FA: {str(e)}"}
 
+    async def disable_account_2fa(
+        self,
+        account_id: int,
+        user_id: int,
+        current_password: Optional[str] = None
+    ) -> dict:
+        """Disables (turns off) 2FA Cloud Password for a single Telegram account."""
+        account = await TelegramAccountModel.get_by_id(account_id, user_id)
+        if not account:
+            return {"status": "error", "message": "Akun tidak ditemukan"}
+
+        client = self._active_clients.get(account_id)
+        if not client or not client.is_connected():
+            connect_res = await self.connect_account(account_id, user_id)
+            if connect_res.get("status") != "success":
+                return {
+                    "status": "error",
+                    "message": f"Gagal menghubungkan sesi akun: {connect_res.get('message', 'Sesi mati / kedaluwarsa')}"
+                }
+            client = self._active_clients.get(account_id)
+
+        try:
+            if not await client.is_user_authorized():
+                await TelegramAccountModel.update_status(account_id, False)
+                return {"status": "error", "message": "Sesi tidak terotorisasi atau sudah kedaluwarsa"}
+
+            pwd = await client(GetPasswordRequest())
+            has_2fa = bool(pwd.has_password)
+            pending_reset_date = getattr(pwd, 'pending_reset_date', None)
+
+            if not has_2fa:
+                await TelegramAccountModel.update_2fa_status(
+                    account_id=account_id,
+                    has_2fa=False,
+                    hint=None,
+                    twofa_password=None,
+                    twofa_status="no_2fa",
+                    twofa_reset_until=None
+                )
+                return {
+                    "status": "success",
+                    "account_id": account_id,
+                    "phone_number": account.get("phone_number"),
+                    "display_name": account.get("display_name"),
+                    "has_2fa": False,
+                    "twofa_password": None,
+                    "twofa_status": "no_2fa",
+                    "twofa_reset_until": None,
+                    "hint": None,
+                    "message": "Akun sudah tidak menggunakan 2FA"
+                }
+
+            candidates = await self._build_2fa_candidates(account, user_id, current_password)
+            disabled_from = None
+            for cand in candidates:
+                try:
+                    await client.edit_2fa(
+                        current_password=cand,
+                        new_password=None
+                    )
+                    disabled_from = cand
+                    break
+                except PasswordHashInvalidError:
+                    continue
+                except FloodWaitError:
+                    raise
+                except Exception:
+                    continue
+
+            if disabled_from is not None:
+                if pending_reset_date:
+                    try:
+                        await client(DeclinePasswordResetRequest())
+                    except Exception:
+                        pass
+
+                await TelegramAccountModel.update_2fa_status(
+                    account_id=account_id,
+                    has_2fa=False,
+                    hint=None,
+                    twofa_password=None,
+                    twofa_status="no_2fa",
+                    twofa_reset_until=None
+                )
+                return {
+                    "status": "success",
+                    "account_id": account_id,
+                    "phone_number": account.get("phone_number"),
+                    "display_name": account.get("display_name"),
+                    "has_2fa": False,
+                    "twofa_password": None,
+                    "twofa_status": "no_2fa",
+                    "twofa_reset_until": None,
+                    "hint": None,
+                    "message": f"Berhasil mematikan 2FA (sandi lama: '{disabled_from}')"
+                }
+
+            return {
+                "status": "error",
+                "account_id": account_id,
+                "phone_number": account.get("phone_number"),
+                "display_name": account.get("display_name"),
+                "message": f"Gagal mematikan 2FA: Sandi 2FA lama tidak cocok (sudah dicoba: {', '.join(candidates)})"
+            }
+
+        except (UserDeactivatedError, UserDeactivatedBanError, AuthKeyUnregisteredError):
+            await TelegramAccountModel.update_status(account_id, False)
+            return {"status": "error", "message": "Akun Telegram telah dinonaktifkan / di-banned"}
+        except FloodWaitError as e:
+            return {"status": "error", "message": f"Terkena FloodWait Telegram, tunggu {e.seconds} detik."}
+        except Exception as e:
+            return {"status": "error", "message": f"Gagal mematikan 2FA: {str(e)}"}
+
     async def change_accounts_2fa_bulk(
         self,
         user_id: int,
@@ -2236,6 +2360,60 @@ class ClientManager:
         return await self._run_parallel_bulk(
             "chg2fa",
             f"Ganti 2FA Massal (Sandi: {new_password})",
+            accounts_to_process,
+            _worker,
+            delay_seconds=float(max(0, delay_seconds)),
+            cancel_row_fn=_cancel_row,
+        )
+
+    async def disable_accounts_2fa_bulk(
+        self,
+        user_id: int,
+        current_password: Optional[str] = None,
+        account_ids: Optional[list[int]] = None,
+        delay_seconds: int = 0
+    ) -> list[dict]:
+        """Disables (turns off) 2FA password across all target accounts in full parallel."""
+        all_accounts = await TelegramAccountModel.list_by_user(user_id)
+        if account_ids:
+            target_set = set(account_ids)
+            accounts_to_process = [acc for acc in all_accounts if acc["id"] in target_set]
+        else:
+            accounts_to_process = all_accounts
+
+        if not accounts_to_process:
+            return [{"status": "error", "message": "Tidak ada akun Telegram yang dipilih"}]
+
+        async def _worker(idx: int, acc: dict, op_id: str) -> dict:
+            acc_id = acc["id"]
+            acc_name = acc.get("display_name") or acc.get("phone_number") or f"Akun #{acc_id}"
+            res = await self.disable_account_2fa(
+                account_id=acc_id,
+                user_id=user_id,
+                current_password=current_password
+            )
+            return {
+                "account_id": acc_id,
+                "name": acc_name,
+                "phone": acc.get("phone_number"),
+                "status": res.get("status", "error"),
+                "has_2fa": res.get("has_2fa"),
+                "twofa_status": res.get("twofa_status"),
+                "message": res.get("message", "")
+            }
+
+        def _cancel_row(idx: int, acc: dict) -> dict:
+            return {
+                "account_id": acc["id"],
+                "name": acc.get("display_name") or acc.get("phone_number") or f"Akun #{acc['id']}",
+                "phone": acc.get("phone_number"),
+                "status": "cancelled",
+                "message": "Proses dihentikan oleh pengguna"
+            }
+
+        return await self._run_parallel_bulk(
+            "dis2fa",
+            "Matikan 2FA Massal",
             accounts_to_process,
             _worker,
             delay_seconds=float(max(0, delay_seconds)),

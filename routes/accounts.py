@@ -230,6 +230,11 @@ class Change2FARequest(BaseModel):
     hint: Optional[str] = ""
     delay_seconds: int = Field(default=0, ge=0, le=60)
 
+class Disable2FARequest(BaseModel):
+    account_ids: Optional[List[int]] = None
+    current_password: Optional[str] = None
+    delay_seconds: int = Field(default=0, ge=0, le=60)
+
 @router.post("/{account_id}/check-2fa")
 async def check_account_2fa(
     account_id: int,
@@ -290,6 +295,33 @@ async def change_single_account_2fa(account_id: int, req: Change2FARequest, curr
     )
     if res.get("status") == "error":
         raise HTTPException(status_code=400, detail=res.get("message", "Gagal mengganti 2FA"))
+    return res
+
+@router.post("/disable-2fa")
+async def disable_2fa_bulk(req: Optional[Disable2FARequest] = None, current_user: dict = Depends(get_current_user)):
+    """Disables (turns off) 2FA password across selected or all accounts in parallel."""
+    results = await client_manager.disable_accounts_2fa_bulk(
+        user_id=current_user["id"],
+        current_password=req.current_password if req else None,
+        account_ids=req.account_ids if req else None,
+        delay_seconds=req.delay_seconds if req else 0
+    )
+    return {"status": "success", "results": results}
+
+@router.post("/{account_id}/disable-2fa")
+async def disable_single_account_2fa(
+    account_id: int,
+    req: Optional[Disable2FARequest] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """Disables (turns off) 2FA password for a single account."""
+    res = await client_manager.disable_account_2fa(
+        account_id=account_id,
+        user_id=current_user["id"],
+        current_password=req.current_password if req else None
+    )
+    if res.get("status") == "error":
+        raise HTTPException(status_code=400, detail=res.get("message", "Gagal mematikan 2FA"))
     return res
 
 # ----------------- Telegram Login OTP Retrieval -----------------

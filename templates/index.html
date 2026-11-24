@@ -1273,8 +1273,8 @@ Halo semuanya, selamat beraktivitas ya</textarea>
             <div class="tool-header-lux">
               <div class="tool-icon-circle" style="background: linear-gradient(135deg, var(--accent-cyan), var(--accent-purple));">🔐</div>
               <div>
-                <h3 class="tool-title">Ganti & Pasang Sandi 2FA (Cloud Password Manager)</h3>
-                <p class="tool-subtitle">Ubah sandi 2FA lama atau pasang 2FA baru secara otomatis dengan pilihan template instan 0707 / 26</p>
+                <h3 class="tool-title">Ganti, Pasang & Matikan 2FA (Cloud Password Manager)</h3>
+                <p class="tool-subtitle">Ubah sandi 2FA lama, pasang 2FA baru, atau matikan 2FA secara paralel massal</p>
               </div>
             </div>
 
@@ -1314,10 +1314,11 @@ Halo semuanya, selamat beraktivitas ya</textarea>
                       <button type="button" class="btn-pill" id="old2fa-preset-0707">0707</button>
                       <button type="button" class="btn-pill" id="old2fa-preset-26">26</button>
                       <button type="button" class="btn-pill" id="old2fa-preset-7">7</button>
+                      <button type="button" class="btn-pill" id="old2fa-preset-466">466</button>
                     </div>
                   </div>
-                  <input type="text" id="change2fa-current-password" class="form-input" placeholder="Kosongkan = Auto-Deteksi (0707 / 26 / 7 / Tanpa 2FA)">
-                  <div class="form-help">Biarkan kosong agar sistem otomatis mencoba sandi lama <code>0707</code>, <code>26</code>, <code>7</code>, atau langsung memasang jika belum ada 2FA.</div>
+                  <input type="text" id="change2fa-current-password" class="form-input" placeholder="Kosongkan = Auto-Deteksi (0707 / 26 / 7 / 466 / Tanpa 2FA)">
+                  <div class="form-help">Biarkan kosong agar sistem otomatis mencoba sandi lama <code>0707</code>, <code>26</code>, <code>7</code>, <code>466</code>, atau langsung memasang jika belum ada 2FA.</div>
                 </div>
 
                 <div class="form-group">
@@ -1380,11 +1381,14 @@ Halo semuanya, selamat beraktivitas ya</textarea>
               </div>
 
               <!-- Action Buttons -->
-              <div style="display: flex; gap: 10px; width: 100%;">
-                <button class="btn btn-primary" style="flex: 1;" id="start-change2fa-btn">
+              <div style="display: flex; gap: 10px; width: 100%; flex-wrap: wrap;">
+                <button class="btn btn-primary" style="flex: 1; min-width: 200px;" id="start-change2fa-btn">
                   <span>🔐 Terapkan Sandi 2FA Sekarang</span>
                 </button>
-                <button class="btn btn-danger" style="display: none; padding: 10px 18px; font-weight: 600;" id="cancel-change2fa-btn">
+                <button class="btn btn-danger" style="flex: 1; min-width: 180px;" id="start-disable2fa-btn">
+                  <span>🔓 Matikan 2FA</span>
+                </button>
+                <button class="btn btn-secondary" style="display: none; padding: 10px 18px; font-weight: 600; border-color: var(--accent-rose); color: var(--accent-rose);" id="cancel-change2fa-btn">
                   <span>⛔ Hentikan</span>
                 </button>
               </div>
@@ -1711,6 +1715,9 @@ Halo semuanya, selamat beraktivitas ya</textarea>
               </button>
               <button class="btn-check-2fa-inline" id="otp-set-2fa-26-btn" title="Ganti / pasang sandi 2FA akun ini menjadi 26">
                 🔐 Set 26
+              </button>
+              <button class="btn-check-2fa-inline" id="otp-disable-2fa-btn" title="Matikan / hapus sandi 2FA akun ini" style="color: var(--accent-rose); border-color: rgba(239, 68, 68, 0.35);">
+                🔓 Matikan 2FA
               </button>
               <button class="btn-check-2fa-inline" id="otp-check-2fa-inline-btn" title="Cek / Verifikasi ulang sandi 2FA akun ini">
                 🔄 Cek 2FA
