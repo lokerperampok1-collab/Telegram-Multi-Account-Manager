@@ -1592,6 +1592,13 @@ Halo semuanya, selamat beraktivitas ya</textarea>
               <textarea id="transfer-string-input" class="form-input" rows="3" placeholder="Tempel StringSession Telethon (1BVts...), Pyrogram, atau Hex:DC (441bc7...:5)" style="font-family: 'JetBrains Mono', monospace; font-size: 0.8rem;"></textarea>
             </div>
 
+            <!-- Optional Custom 2FA Password for All Accounts -->
+            <div class="form-group" style="margin-bottom: 14px;">
+              <label class="form-label" for="transfer-custom-2fa-input">Sandi 2FA untuk Semua Akun (Opsional)</label>
+              <input type="text" id="transfer-custom-2fa-input" class="form-input" placeholder="Ketik sandi 2FA kustom (bisa banyak dipisah koma, misal: id2026, sandi2) — kosongkan untuk auto (0707 / 26 / 7 / 466)" autocomplete="off">
+              <div class="form-help">Sandi yang Anda masukkan di sini akan dicoba <strong>pertama</strong> untuk semua akun terpilih, lalu dilanjutkan sandi tersimpan &amp; bawaan (<code>0707</code>, <code>26</code>, <code>7</code>, <code>466</code>).</div>
+            </div>
+
             <!-- Security Options -->
             <div style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 18px; padding: 12px; background: rgba(255,255,255,0.02); border-radius: var(--radius-sm); border: 1px solid var(--border-color);">
               <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.84rem; color: var(--text-primary);">

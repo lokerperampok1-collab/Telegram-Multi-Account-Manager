@@ -552,6 +552,7 @@
 
     const autoLogout = document.getElementById('transfer-auto-logout-chk')?.checked ?? true;
     const saveDash = document.getElementById('transfer-save-dashboard-chk')?.checked ?? true;
+    const customTwofa = (document.getElementById('transfer-custom-2fa-input')?.value || '').trim();
     const batchBox = document.getElementById('transfer-batch-summary');
     const batchResultsEl = document.getElementById('transfer-batch-results');
     const startBtn = document.getElementById('transfer-start-btn');
@@ -577,7 +578,8 @@
               account_ids: Array.from(selectedTransferAccountIds),
               auto_logout_old: autoLogout,
               save_to_dashboard: saveDash,
-              max_concurrent: maxConcurrent
+              max_concurrent: maxConcurrent,
+              twofa_password: customTwofa || null
             })
           });
           const data = await res.json();
@@ -615,6 +617,9 @@
     formData.append('source_type', mode);
     formData.append('auto_logout_old', autoLogout ? 'true' : 'false');
     formData.append('save_to_dashboard', saveDash ? 'true' : 'false');
+    if (customTwofa) {
+      formData.append('twofa_password', customTwofa);
+    }
 
     if (mode === 'dashboard') {
       const singleId = Array.from(selectedTransferAccountIds)[0];

@@ -69,6 +69,18 @@ def _mask_phone(phone: Optional[str]) -> str:
     return f"{clean[:4]}****{clean[-3:]}"
 
 
+def _parse_custom_2fa_passwords(raw: Optional[str]) -> list[str]:
+    """Parses comma/newline-separated custom 2FA passwords into a deduplicated ordered list."""
+    seen = set()
+    passwords = []
+    for part in re.split(r"[\r\n,]+", raw or ""):
+        pwd = part.strip()
+        if pwd and pwd not in seen:
+            seen.add(pwd)
+            passwords.append(pwd)
+    return passwords
+
+
 def _validate_sqlite_session_file(file_path: Path) -> None:
     if not file_path.is_file() or file_path.stat().st_size == 0:
         raise ValueError("File .session tidak ditemukan atau kosong.")
@@ -225,6 +237,7 @@ class SessionTransferService:
         save_to_dashboard: bool = True,
         semaphore: Optional[asyncio.Semaphore] = None,
         prefetched_account: Optional[Dict[str, Any]] = None,
+        custom_twofa_password: Optional[str] = None,
     ) -> TransferJob:
         if not settings.API_ID or not settings.API_HASH:
             raise ValueError("API_ID dan API_HASH belum dikonfigurasi pada server.")
@@ -292,6 +305,7 @@ class SessionTransferService:
                             dashboard_account_id=dashboard_account_id,
                             string_session_data=string_session_data,
                             prefetched_account=acc_data,
+                            custom_twofa_password=custom_twofa_password,
                         )
                 else:
                     await self._execute_transfer(
@@ -300,6 +314,7 @@ class SessionTransferService:
                         dashboard_account_id=dashboard_account_id,
                         string_session_data=string_session_data,
                         prefetched_account=acc_data,
+                        custom_twofa_password=custom_twofa_password,
                     )
             except asyncio.CancelledError:
                 if job.status not in TERMINAL_STATUSES:
@@ -326,6 +341,7 @@ class SessionTransferService:
         dashboard_account_id: Optional[int],
         string_session_data: Optional[str],
         prefetched_account: Optional[Dict[str, Any]] = None,
+        custom_twofa_password: Optional[str] = None,
     ) -> None:
         api_id = settings.API_ID
         api_hash = settings.API_HASH
@@ -417,24 +433,32 @@ class SessionTransferService:
         job.update(progress_pct=65, message="Melakukan Sign-In ke sesi baru dengan kode OTP...")
 
         sign_in_success = False
+        matched_twofa: Optional[str] = None
         try:
             await job.new_client.sign_in(phone=phone_raw, code=code, phone_code_hash=phone_code_hash)
             sign_in_success = True
         except SessionPasswordNeededError:
-            # Try saved 2FA password first, then standard default templates ("0707", "26", "7", "466")
-            twofa_candidates = []
-            if saved_twofa:
-                twofa_candidates.append(saved_twofa)
+            # Try user-supplied custom 2FA first, then saved DB password, then default templates ("0707", "26", "7", "466")
+            twofa_candidates: list[tuple[str, str]] = []
+            seen_pwds: set[str] = set()
+            for cpwd in _parse_custom_2fa_passwords(custom_twofa_password):
+                if cpwd not in seen_pwds:
+                    seen_pwds.add(cpwd)
+                    twofa_candidates.append((cpwd, "sandi 2FA input"))
+            if saved_twofa and saved_twofa not in seen_pwds:
+                seen_pwds.add(saved_twofa)
+                twofa_candidates.append((saved_twofa, "sandi tersimpan"))
             for default_cand in ("0707", "26", "7", "466"):
-                if default_cand not in twofa_candidates:
-                    twofa_candidates.append(default_cand)
+                if default_cand not in seen_pwds:
+                    seen_pwds.add(default_cand)
+                    twofa_candidates.append((default_cand, f"sandi bawaan ({default_cand})"))
 
-            for idx, cand_pwd in enumerate(twofa_candidates):
-                label = "sandi tersimpan" if (saved_twofa and cand_pwd == saved_twofa and idx == 0) else f"sandi bawaan ({cand_pwd})"
+            for cand_pwd, label in twofa_candidates:
                 job.update(progress_pct=70, message=f"Akun memakai 2FA. Mencoba {label}...")
                 try:
                     await job.new_client.sign_in(password=cand_pwd)
                     sign_in_success = True
+                    matched_twofa = cand_pwd
                     break
                 except PasswordHashInvalidError:
                     sign_in_success = False
@@ -451,6 +475,7 @@ class SessionTransferService:
                 try:
                     await job.new_client.sign_in(password=two_fa_pwd)
                     sign_in_success = True
+                    matched_twofa = two_fa_pwd
                 finally:
                     del two_fa_pwd
 
@@ -513,7 +538,7 @@ class SessionTransferService:
                 logout_confirmed = True
             except Exception as logout_err:
                 logger.warning(f"[Transfer {job.job_id}] Logout old session uncertain: {logout_err}")
-                await self._save_to_dashboard_if_needed(job, new_me, new_string_session, source_type)
+                await self._save_to_dashboard_if_needed(job, new_me, new_string_session, source_type, matched_twofa=matched_twofa)
                 job.update(
                     status=TransferStatus.PARTIAL_LOGOUT_UNCERTAIN,
                     progress_pct=96,
@@ -532,7 +557,7 @@ class SessionTransferService:
                     )
                     return
 
-        await self._save_to_dashboard_if_needed(job, new_me, new_string_session, source_type)
+        await self._save_to_dashboard_if_needed(job, new_me, new_string_session, source_type, matched_twofa=matched_twofa)
 
         job.update(
             status=TransferStatus.COMPLETED,
@@ -551,6 +576,7 @@ class SessionTransferService:
         me,
         new_string_session: str,
         source_type: str,
+        matched_twofa: Optional[str] = None,
     ) -> None:
         if not job.save_to_dashboard and source_type != "dashboard":
             return
@@ -575,6 +601,18 @@ class SessionTransferService:
                     telegram_id=me.id,
                     is_active=True,
                 )
+                if matched_twofa:
+                    try:
+                        await TelegramAccountModel.update_2fa_status(
+                            account_id=acc_id,
+                            has_2fa=True,
+                            hint=None,
+                            twofa_password=matched_twofa,
+                            twofa_status="matched",
+                            twofa_reset_until=None,
+                        )
+                    except Exception:
+                        pass
             # Disconnect old active client in client_manager if cached
             old_cached = client_manager._active_clients.pop(acc_id, None)
             if old_cached:
@@ -683,6 +721,7 @@ class SessionTransferService:
         auto_logout_old: bool = True,
         save_to_dashboard: bool = True,
         max_concurrent: int = 0,
+        custom_twofa_password: Optional[str] = None,
     ) -> Dict[str, Any]:
         if not settings.API_ID or not settings.API_HASH:
             raise ValueError("API_ID dan API_HASH belum dikonfigurasi pada server.")
@@ -710,6 +749,7 @@ class SessionTransferService:
                     auto_logout_old=auto_logout_old,
                     save_to_dashboard=save_to_dashboard,
                     semaphore=semaphore,
+                    custom_twofa_password=custom_twofa_password,
                 )
                 started_jobs.append(job)
             except (ValueError, RuntimeError) as e:

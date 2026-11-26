@@ -27,6 +27,7 @@ class StartBatchTransferRequest(BaseModel):
     auto_logout_old: bool = True
     save_to_dashboard: bool = True
     max_concurrent: int = Field(default=0, ge=0, le=100)
+    twofa_password: Optional[str] = None
 
 
 @router.post("/start")
@@ -36,6 +37,7 @@ async def start_transfer(
     string_session: Optional[str] = Form(None),
     auto_logout_old: bool = Form(True),
     save_to_dashboard: bool = Form(True),
+    twofa_password: Optional[str] = Form(None),
     session_file: Optional[UploadFile] = File(None),
     current_user: dict = Depends(get_current_user),
 ):
@@ -57,6 +59,7 @@ async def start_transfer(
             file_bytes=file_bytes,
             auto_logout_old=auto_logout_old,
             save_to_dashboard=save_to_dashboard,
+            custom_twofa_password=twofa_password,
         )
         return {"status": "success", "job": job.to_public_dict()}
     except RuntimeError as e:
@@ -77,6 +80,7 @@ async def start_batch_transfer(req: StartBatchTransferRequest, current_user: dic
             auto_logout_old=req.auto_logout_old,
             save_to_dashboard=req.save_to_dashboard,
             max_concurrent=req.max_concurrent,
+            custom_twofa_password=req.twofa_password,
         )
         return {"status": "success", "batch": batch}
     except RuntimeError as e:
