@@ -69,6 +69,17 @@ function updateFilterActionButtons() {
       connectOfflineBtn.title = `Hubungkan seluruh akun yang offline secara massal`;
     }
   }
+
+  const removeBulkBtn = document.getElementById('remove-all-accounts-btn');
+  if (removeBulkBtn && !removeBulkBtn.disabled) {
+    if (isFiltered) {
+      removeBulkBtn.innerHTML = `🗑️ Hapus Daftar (${count})`;
+      removeBulkBtn.title = `Hapus ${count} akun terfilter dari daftar dashboard saja (sesi Telegram tetap aman & tidak di-logout)`;
+    } else {
+      removeBulkBtn.innerHTML = '🗑️ Hapus Daftar Akun';
+      removeBulkBtn.title = 'Hapus semua akun dari daftar dashboard saja (sesi Telegram tetap aman & tidak di-logout)';
+    }
+  }
 }
 window.updateFilterActionButtons = updateFilterActionButtons;
 
@@ -491,6 +502,59 @@ async function cleanDeadSessions() {
   }
 }
 window.cleanDeadSessions = cleanDeadSessions;
+
+async function removeAccountsFromDashboardBulk() {
+  const isFiltered = hasActiveAccountFilter();
+  const count = accountPagination.total || 0;
+  if (count === 0) {
+    showToast('Tidak ada akun di daftar untuk dihapus', 'info');
+    return;
+  }
+
+  const scopeLabel = isFiltered
+    ? `${count} akun yang sedang terfilter`
+    : `SEMUA (${count}) akun`;
+
+  const proceed = confirm(
+    `🗑️ HAPUS DAFTAR AKUN DASHBOARD (${scopeLabel}):\n\n` +
+    `Apakah Anda yakin ingin menghapus ${scopeLabel} dari daftar dashboard?\n\n` +
+    `• Sesi Telegram TIDAK akan di-logout (Auth Key tetap aman & aktif).\n` +
+    `• File .session / StringSession yang sudah Anda export tetap bisa dipakai lagi kapan saja.`
+  );
+  if (!proceed) return;
+
+  const btn = document.getElementById('remove-all-accounts-btn');
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<div class="spinner" style="width:12px;height:12px;display:inline-block;margin-right:6px;"></div> Menghapus daftar...';
+  }
+
+  try {
+    const res = await fetch('/api/accounts/remove-bulk', {
+      method: 'POST',
+      headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify(getActiveAccountFilterPayload())
+    });
+    const data = await res.json();
+
+    if (res.ok && data.status === 'success') {
+      accountPagination.page = 1;
+      await loadAccounts();
+      if (window.loadSessionManagerAccounts) loadSessionManagerAccounts();
+      showToast(data.message || `${data.deleted_count || 0} akun dihapus dari daftar dashboard (sesi tetap aman).`, 'success');
+    } else {
+      showToast(data.detail || data.message || 'Gagal menghapus daftar akun', 'error');
+    }
+  } catch (err) {
+    showToast('Koneksi server gagal', 'error');
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      updateFilterActionButtons();
+    }
+  }
+}
+window.removeAccountsFromDashboardBulk = removeAccountsFromDashboardBulk;
 
 async function checkAllAccountsHealth() {
   const btn = document.getElementById('check-all-health-btn');
@@ -1225,6 +1289,11 @@ document.addEventListener('DOMContentLoaded', () => {
   const cleanDeadSessionsBtn = document.getElementById('clean-dead-sessions-btn');
   if (cleanDeadSessionsBtn) {
     cleanDeadSessionsBtn.addEventListener('click', cleanDeadSessions);
+  }
+
+  const removeAllAccountsBtn = document.getElementById('remove-all-accounts-btn');
+  if (removeAllAccountsBtn) {
+    removeAllAccountsBtn.addEventListener('click', removeAccountsFromDashboardBulk);
   }
 
   const checkAllBtn = document.getElementById('check-all-health-btn');

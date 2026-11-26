@@ -672,6 +672,54 @@ class ClientManager:
             return {"status": "success", "message": "Account removed"}
         return {"status": "error", "message": "Account not found"}
 
+    async def remove_accounts_bulk(self, user_id: int, account_ids: Optional[list[int]] = None) -> dict:
+        """
+        Disconnects local Telethon clients and removes accounts from dashboard DB ONLY.
+        NEVER calls client.log_out(), so Telegram sessions remain active and safe.
+        """
+        user_accounts = await TelegramAccountModel.list_by_user(user_id)
+        owned_ids = [acc["id"] for acc in user_accounts]
+
+        if account_ids is None:
+            ids_to_remove = owned_ids
+        else:
+            owned_set = set(owned_ids)
+            ids_to_remove = [aid for aid in dict.fromkeys(account_ids) if aid in owned_set]
+
+        if not ids_to_remove:
+            return {
+                "status": "success",
+                "deleted_count": 0,
+                "message": "Tidak ada akun yang cocok untuk dihapus dari daftar dashboard."
+            }
+
+        # Disconnect in-memory Telethon sockets in parallel (DO NOT call log_out)
+        clients_to_disconnect = []
+        for acc_id in ids_to_remove:
+            client = self._active_clients.pop(acc_id, None)
+            if client:
+                clients_to_disconnect.append(client)
+
+        async def _safe_disconnect(c):
+            try:
+                await c.disconnect()
+            except Exception:
+                pass
+
+        if clients_to_disconnect:
+            await asyncio.gather(*(_safe_disconnect(c) for c in clients_to_disconnect))
+
+        deleted_count = await TelegramAccountModel.delete_many(
+            user_id,
+            None if account_ids is None else ids_to_remove
+        )
+
+        return {
+            "status": "success",
+            "deleted_count": deleted_count,
+            "message": f"{deleted_count} akun berhasil dihapus dari daftar dashboard (sesi Telegram tetap aman & tidak di-logout)."
+        }
+
     async def refresh_and_clean_accounts(self, user_id: int) -> dict:
         """
         Verifies session status for all accounts of a user.

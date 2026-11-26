@@ -375,3 +375,32 @@ class TelegramAccountModel:
             )
             await db.commit()
             return cursor.rowcount > 0
+
+    @staticmethod
+    async def delete_many(user_id: int, account_ids: Optional[List[int]] = None) -> int:
+        """Deletes all or specified accounts belonging to user_id from DB. Returns deleted row count."""
+        async with db_connect(write=True) as db:
+            if account_ids is None:
+                cursor = await db.execute(
+                    "DELETE FROM telegram_accounts WHERE user_id = ?",
+                    (user_id,)
+                )
+                await db.commit()
+                return cursor.rowcount
+
+            unique_ids = list(dict.fromkeys(account_ids))
+            if not unique_ids:
+                return 0
+
+            total_deleted = 0
+            chunk_size = 500
+            for i in range(0, len(unique_ids), chunk_size):
+                chunk = unique_ids[i:i + chunk_size]
+                placeholders = ",".join("?" for _ in chunk)
+                cursor = await db.execute(
+                    f"DELETE FROM telegram_accounts WHERE user_id = ? AND id IN ({placeholders})",
+                    [user_id, *chunk]
+                )
+                total_deleted += cursor.rowcount
+            await db.commit()
+            return total_deleted

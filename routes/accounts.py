@@ -151,6 +151,16 @@ async def refresh_and_clean_accounts(current_user: dict = Depends(get_current_us
     result = await client_manager.refresh_and_clean_accounts(current_user["id"])
     return result
 
+@router.post("/remove-bulk")
+async def remove_accounts_bulk(
+    req: Optional[CheckFilterRequest] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """Removes filtered or all accounts from dashboard DB and disconnects locally WITHOUT logging out Telegram sessions."""
+    target_ids = await _resolve_account_ids_from_filter(current_user["id"], req)
+    result = await client_manager.remove_accounts_bulk(current_user["id"], account_ids=target_ids)
+    return result
+
 # ----------------- Active Devices / Authorizations -----------------
 
 @router.get("/{account_id}/devices")
