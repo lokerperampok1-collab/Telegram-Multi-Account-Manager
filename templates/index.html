@@ -569,7 +569,7 @@
                     </svg>
                   </div>
                   <div class="dropzone-title">Seret & Lepas File Sesi di Sini</div>
-                  <div class="dropzone-desc">Mendukung upload banyak file sekaligus: file <strong>.session</strong> (Telethon SQLite), arsip <strong>.zip</strong> (kumpulan banyak sesi), atau <strong>.txt</strong></div>
+                  <div class="dropzone-desc">Mendukung upload banyak file sekaligus: file <strong>.session</strong> (Telethon / Pyrogram SQLite), arsip <strong>.zip</strong> (kumpulan banyak sesi), atau <strong>.txt</strong></div>
                   <button type="button" class="btn btn-secondary btn-sm" id="btn-browse-session-files" style="margin-top: 12px;">
                     📂 Pilih File Sesi
                   </button>
@@ -592,8 +592,8 @@
               <!-- PANE 2: Paste StringSession Textarea -->
               <div id="pane-paste-text" class="session-import-pane" style="display: none;">
                 <div class="form-group">
-                  <label class="form-label" for="import-sessions-text">StringSession Telegram (Satu per baris)</label>
-                  <textarea id="import-sessions-text" class="form-textarea" rows="6" placeholder="1BJWap1wBu7...&#10;1BJWap2xCu8..."></textarea>
+                  <label class="form-label" for="import-sessions-text">StringSession Telegram (Telethon / Pyrogram / Hex:DC — Satu per baris)</label>
+                  <textarea id="import-sessions-text" class="form-textarea" rows="6" placeholder="1BJWap1wBu7...&#10;BQADBAAD... (Pyrogram)"></textarea>
                   <div class="form-help">Jika session milik nomor yang sudah terdaftar, sistem otomatis memperbarui sesi tanpa membuat kartu dobel.</div>
                 </div>
 
@@ -1578,15 +1578,15 @@ Halo semuanya, selamat beraktivitas ya</textarea>
 
             <!-- Panel: File .session Upload -->
             <div id="transfer-panel-file" style="display: none; margin-bottom: 16px;">
-              <label class="form-label" for="transfer-file-input">Unggah File Sesi Telethon (<code>.session</code>)</label>
+              <label class="form-label" for="transfer-file-input">Unggah File Sesi Telethon / Pyrogram (<code>.session</code>)</label>
               <input type="file" id="transfer-file-input" accept=".session" class="form-input" style="padding: 10px;">
-              <div class="form-help">Hanya mendukung file SQLite <code>.session</code> Telethon (maksimal 10MB).</div>
+              <div class="form-help">Mendukung file SQLite <code>.session</code> Telethon maupun Pyrogram (maksimal 10MB).</div>
             </div>
 
             <!-- Panel: StringSession Paste -->
             <div id="transfer-panel-string" style="display: none; margin-bottom: 16px;">
-              <label class="form-label" for="transfer-string-input">Tempel StringSession atau Format <code>AuthKeyHex:DC</code></label>
-              <textarea id="transfer-string-input" class="form-input" rows="3" placeholder="Tempel StringSession Telethon (1BVts...) atau Hex:DC (441bc7...:5)" style="font-family: 'JetBrains Mono', monospace; font-size: 0.8rem;"></textarea>
+              <label class="form-label" for="transfer-string-input">Tempel StringSession (Telethon / Pyrogram) atau Format <code>AuthKeyHex:DC</code></label>
+              <textarea id="transfer-string-input" class="form-input" rows="3" placeholder="Tempel StringSession Telethon (1BVts...), Pyrogram, atau Hex:DC (441bc7...:5)" style="font-family: 'JetBrains Mono', monospace; font-size: 0.8rem;"></textarea>
             </div>
 
             <!-- Security Options -->

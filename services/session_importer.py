@@ -1,6 +1,7 @@
 import os
 import io
 import re
+import json
 import base64
 import struct
 import sqlite3
@@ -58,20 +59,85 @@ def string_session_to_sqlite_bytes(session_str: str) -> bytes | None:
         logger.warning(f"Error converting StringSession to SQLite: {e}")
         return None
 
+DC_DEFAULT_IPS = {
+    1: '149.154.175.53',
+    2: '149.154.167.51',
+    3: '149.154.175.100',
+    4: '149.154.167.91',
+    5: '91.108.56.130',
+}
+
+
+def pyrogram_string_to_telethon_string(session_str: str) -> Optional[str]:
+    """Converts a Pyrogram StringSession (v1 263/267B or v2 271B) into a Telethon StringSession."""
+    s = (session_str or "").strip().strip('"\' ,;{}[]')
+    if not s or len(s) < 300 or len(s) > 420 or any(c.isspace() for c in s):
+        return None
+    if not re.fullmatch(r'[A-Za-z0-9_+/=-]+', s):
+        return None
+
+    # Do not treat valid Telethon StringSessions as Pyrogram
+    if s.startswith('1'):
+        try:
+            loaded = StringSession(s)
+            if loaded.auth_key:
+                return None
+        except Exception:
+            pass
+
+    try:
+        padded = s + '=' * (-len(s) % 4)
+        raw = base64.urlsafe_b64decode(padded)
+    except Exception:
+        return None
+
+    dc_id = None
+    test_mode = False
+    auth_key = None
+
+    try:
+        if len(raw) == 271:
+            if raw[5] not in (0, 1) or raw[270] not in (0, 1):
+                return None
+            dc_id, _api_id, test_mode, auth_key, _user_id, _is_bot = struct.unpack(">BI?256sQ?", raw)
+        elif len(raw) == 267:
+            if raw[1] not in (0, 1) or raw[266] not in (0, 1):
+                return None
+            dc_id, test_mode, auth_key, _user_id, _is_bot = struct.unpack(">B?256sQ?", raw)
+        elif len(raw) == 263:
+            if raw[1] not in (0, 1) or raw[262] not in (0, 1):
+                return None
+            dc_id, test_mode, auth_key, _user_id, _is_bot = struct.unpack(">B?256sI?", raw)
+        else:
+            return None
+    except Exception:
+        return None
+
+    if test_mode or int(dc_id) not in DC_DEFAULT_IPS:
+        return None
+    if not isinstance(auth_key, (bytes, bytearray)) or len(auth_key) != 256 or bytes(auth_key) == (b"\x00" * 256):
+        return None
+
+    try:
+        return sqlite_to_string_session(int(dc_id), DC_DEFAULT_IPS[int(dc_id)], 443, bytes(auth_key))
+    except Exception:
+        return None
+
+
 def extract_string_from_session_bytes(session_bytes: bytes) -> str | None:
-    """Extracts Telethon StringSession from raw .session SQLite file bytes."""
+    """Extracts Telethon StringSession from raw Telethon or Pyrogram .session SQLite file bytes."""
     with tempfile.NamedTemporaryFile(suffix='.session', delete=False) as tmp:
         tmp.write(session_bytes)
         tmp_path = tmp.name
 
     try:
-        # Attempt 1: Direct SQLite reading
+        # Attempt 1: Direct Telethon SQLite reading (has server_address and port)
+        conn = None
         try:
             conn = sqlite3.connect(tmp_path)
             cur = conn.cursor()
-            cur.execute("SELECT dc_id, server_address, port, auth_key FROM sessions")
+            cur.execute("SELECT dc_id, server_address, port, auth_key FROM sessions LIMIT 1")
             row = cur.fetchone()
-            conn.close()
             if row and row[3]:
                 dc_id, server_address, port, auth_key = row
                 if isinstance(auth_key, (bytes, bytearray)) and len(auth_key) == 256:
@@ -81,8 +147,37 @@ def extract_string_from_session_bytes(session_bytes: bytes) -> str | None:
                         pass
         except Exception:
             pass
+        finally:
+            if conn is not None:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
 
-        # Attempt 2: Telethon SQLiteSession fallback
+        # Attempt 2: Pyrogram SQLite reading (has dc_id and auth_key, no server_address/port)
+        conn = None
+        try:
+            conn = sqlite3.connect(tmp_path)
+            cur = conn.cursor()
+            cur.execute("SELECT dc_id, auth_key FROM sessions LIMIT 1")
+            row = cur.fetchone()
+            if row and row[0] is not None and isinstance(row[1], (bytes, bytearray)) and len(row[1]) == 256:
+                dc_id = int(row[0])
+                if dc_id in DC_DEFAULT_IPS and bytes(row[1]) != (b"\x00" * 256):
+                    try:
+                        return sqlite_to_string_session(dc_id, DC_DEFAULT_IPS[dc_id], 443, bytes(row[1]))
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+        finally:
+            if conn is not None:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+
+        # Attempt 3: Telethon SQLiteSession fallback
         try:
             base_path = tmp_path[:-8] if tmp_path.endswith('.session') else tmp_path
             sess = SQLiteSession(base_path)
@@ -102,14 +197,6 @@ def extract_string_from_session_bytes(session_bytes: bytes) -> str | None:
                 pass
     return None
 
-DC_DEFAULT_IPS = {
-    1: '149.154.175.53',
-    2: '149.154.167.51',
-    3: '149.154.175.100',
-    4: '149.154.167.91',
-    5: '91.108.56.130',
-}
-
 def hex_auth_key_to_string_session(hex_str: str, dc_id: int = 2) -> str | None:
     """Converts a 256-byte (512 hex chars) auth key and DC into standard Telethon StringSession."""
     try:
@@ -123,7 +210,7 @@ def hex_auth_key_to_string_session(hex_str: str, dc_id: int = 2) -> str | None:
         return None
 
 def extract_strings_from_text(content_str: str) -> List[str]:
-    """Finds all Telethon StringSessions inside text content, including hex_key:dc format."""
+    """Finds all Telethon & Pyrogram StringSessions inside text content, including hex_key:dc format."""
     results = []
     # 1. Line by line clean matching
     for line in content_str.splitlines():
@@ -133,6 +220,11 @@ def extract_strings_from_text(content_str: str) -> List[str]:
         # Standard Telethon StringSession
         if cleaned.startswith('1') and len(cleaned) >= 200 and ' ' not in cleaned:
             results.append(cleaned)
+            continue
+        # Pyrogram StringSession (v1 / v2)
+        pyro_conv = pyrogram_string_to_telethon_string(cleaned)
+        if pyro_conv:
+            results.append(pyro_conv)
             continue
         # Raw AuthKey Hex format: <512_hex_chars>:<dc_id> or <dc_id>:<512_hex_chars>
         if ':' in cleaned:
@@ -160,6 +252,10 @@ def extract_strings_from_text(content_str: str) -> List[str]:
     if not results:
         found = re.findall(r'\b(1[A-Za-z0-9_-]{200,})\b', content_str)
         results.extend(found)
+        for tok in re.findall(r'(?<![A-Za-z0-9_+/=-])([A-Za-z0-9_+/=-]{345,380})(?![A-Za-z0-9_+/=-])', content_str):
+            pyro_conv = pyrogram_string_to_telethon_string(tok)
+            if pyro_conv:
+                results.append(pyro_conv)
 
     # Remove duplicates preserving order
     return list(dict.fromkeys(results))

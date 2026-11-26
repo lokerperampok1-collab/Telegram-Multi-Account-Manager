@@ -2513,7 +2513,7 @@ class ClientManager:
         return export_nicegram_zip(data)
 
     async def import_session_string(self, user_id: int, session_str: str, twofa_password: Optional[str] = None) -> dict:
-        """Validates and imports a single StringSession into database (supports Telethon and AuthKey Hex:DC)."""
+        """Validates and imports a single StringSession into database (supports Telethon, Pyrogram, and AuthKey Hex:DC)."""
         s = session_str.strip()
         if not s:
             return {"status": "error", "message": "StringSession tidak boleh kosong"}
@@ -2532,6 +2532,12 @@ class ClientManager:
                     conv = hex_auth_key_to_string_session(p2, int(p1))
                     if conv:
                         s = conv
+
+        # Auto-convert Pyrogram StringSession (v1/v2) into Telethon StringSession
+        from services.session_importer import pyrogram_string_to_telethon_string
+        pyro_conv = pyrogram_string_to_telethon_string(s)
+        if pyro_conv:
+            s = pyro_conv
 
         try:
             api_id, api_hash = self._get_credentials()

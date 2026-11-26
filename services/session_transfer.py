@@ -25,7 +25,11 @@ from telethon.errors import (
 from config import settings
 from database.models import TelegramAccountModel
 from services.encryption import encryption_service
-from services.session_importer import hex_auth_key_to_string_session
+from services.session_importer import (
+    hex_auth_key_to_string_session,
+    pyrogram_string_to_telethon_string,
+    extract_string_from_session_bytes,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -111,6 +115,9 @@ def _normalize_string_session(raw_str: str) -> str:
         conv = hex_auth_key_to_string_session(s, 5)
         if conv:
             return conv
+    pyro_conv = pyrogram_string_to_telethon_string(s)
+    if pyro_conv:
+        return pyro_conv
     try:
         loaded = StringSession(s)
         if not loaded.auth_key:
@@ -338,7 +345,11 @@ class SessionTransferService:
         elif source_type == "file":
             if not job.work_file or not job.work_file.is_file():
                 raise ValueError("File sesi kerja tidak ditemukan.")
-            job.old_client = TelegramClient(str(job.work_file.with_suffix("")), api_id, api_hash)
+            extracted_str = extract_string_from_session_bytes(job.work_file.read_bytes())
+            if extracted_str:
+                job.old_client = TelegramClient(StringSession(extracted_str), api_id, api_hash)
+            else:
+                job.old_client = TelegramClient(str(job.work_file.with_suffix("")), api_id, api_hash)
         elif source_type == "string":
             normalized = _normalize_string_session(string_session_data or "")
             job.old_client = TelegramClient(StringSession(normalized), api_id, api_hash)
