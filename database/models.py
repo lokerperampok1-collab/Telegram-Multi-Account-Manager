@@ -207,14 +207,26 @@ class TelegramAccountModel:
                 where_clauses.append("has_2fa IS NULL")
 
             # SpamBot Health Filter
-            if spambot_filter == "perm_limited":
+            if spambot_filter == "frozen":
+                where_clauses.append("spambot_status = 'frozen'")
+            elif spambot_filter == "perm_limited":
                 where_clauses.append("spambot_status = 'perm_limited'")
+            elif spambot_filter == "geo_limited":
+                where_clauses.append("spambot_status = 'geo_limited'")
             elif spambot_filter == "temp_limited":
                 where_clauses.append("spambot_status = 'temp_limited'")
+            elif spambot_filter == "content_limited":
+                where_clauses.append("spambot_status = 'content_limited'")
+            elif spambot_filter == "other_limited":
+                where_clauses.append("spambot_status = 'limited'")
             elif spambot_filter == "clean":
                 where_clauses.append("spambot_status = 'clean'")
+            elif spambot_filter == "banned":
+                where_clauses.append("spambot_status = 'banned'")
             elif spambot_filter == "limited":
-                where_clauses.append("(spambot_status = 'perm_limited' OR spambot_status = 'temp_limited' OR spambot_status = 'limited')")
+                where_clauses.append("spambot_status IN ('perm_limited', 'geo_limited', 'temp_limited', 'content_limited', 'limited')")
+            elif spambot_filter == "problematic":
+                where_clauses.append("spambot_status IN ('frozen', 'perm_limited', 'geo_limited', 'temp_limited', 'content_limited', 'limited', 'banned')")
             elif spambot_filter == "unverified":
                 where_clauses.append("spambot_status IS NULL")
 

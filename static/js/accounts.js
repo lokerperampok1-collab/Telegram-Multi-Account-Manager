@@ -374,18 +374,19 @@ async function checkAccountHealth(accountId) {
     }
 
     if (badge) {
-      if (data.status === 'perm_limited') {
-        badge.innerHTML = `<span style="color: var(--accent-rose); font-weight: 600;" title="${escapeHtml(data.message || '')}">🔴 Limit Permanen</span>`;
-      } else if (data.status === 'clean') {
-        badge.innerHTML = '<span style="color: var(--accent-green); font-weight: 600;">🟢 Clean / Normal</span>';
-      } else if (data.status === 'temp_limited') {
-        badge.innerHTML = `<span style="color: var(--accent-amber); font-weight: 600;" title="${escapeHtml(data.message || '')}">🟡 Limit Sementara</span>`;
-      } else if (data.status === 'limited') {
-        badge.innerHTML = `<span style="color: var(--accent-amber); font-weight: 600;" title="${escapeHtml(data.message || '')}">🟡 Limited</span>`;
-      } else if (data.status === 'banned') {
-        badge.innerHTML = '<span style="color: var(--accent-rose); font-weight: 600;">🔴 Banned/Mati</span>';
-      } else {
-        badge.innerHTML = `<span style="color: var(--text-muted);">⚪ ${escapeHtml(data.badge || 'Unknown')}</span>`;
+      badge.innerHTML = getSpambotBadgeHtml({
+        spambot_status: data.status,
+        spambot_message: data.message,
+        badge: data.badge
+      });
+      badge.title = data.message || 'Klik untuk cek @SpamBot';
+    }
+    if (Array.isArray(cachedSessionAccounts) && cachedSessionAccounts.length > 0) {
+      const cached = cachedSessionAccounts.find(a => a.id === accountId);
+      if (cached) {
+        cached.spambot_status = data.status;
+        cached.spambot_message = data.message;
+        renderSessionManagerList();
       }
     }
     showToast(data.message || 'Pemeriksaan status selesai', data.status === 'clean' ? 'success' : 'info');
@@ -593,27 +594,39 @@ async function checkAllAccountsHealth() {
     const data = await res.json();
 
     if (res.ok && data.results) {
+      const counts = {
+        clean: 0,
+        frozen: 0,
+        perm_limited: 0,
+        geo_limited: 0,
+        temp_limited: 0,
+        content_limited: 0,
+        limited: 0,
+        banned: 0
+      };
       data.results.forEach(r => {
+        if (counts[r.status] !== undefined) counts[r.status] += 1;
         const badge = document.getElementById(`health-badge-${r.account_id}`);
         if (badge) {
-          if (r.status === 'perm_limited') {
-            badge.innerHTML = `<span style="color: var(--accent-rose); font-weight: 600;" title="${escapeHtml(r.message || '')}">🔴 Limit Permanen</span>`;
-          } else if (r.status === 'clean') {
-            badge.innerHTML = '<span style="color: var(--accent-green); font-weight: 600;">🟢 Clean / Normal</span>';
-          } else if (r.status === 'temp_limited') {
-            badge.innerHTML = `<span style="color: var(--accent-amber); font-weight: 600;" title="${escapeHtml(r.message || '')}">🟡 Limit Sementara</span>`;
-          } else if (r.status === 'limited') {
-            badge.innerHTML = `<span style="color: var(--accent-amber); font-weight: 600;" title="${escapeHtml(r.message || '')}">🟡 Limited</span>`;
-          } else if (r.status === 'banned') {
-            badge.innerHTML = '<span style="color: var(--accent-rose); font-weight: 600;">🔴 Banned/Mati</span>';
-          } else if (r.status === 'cancelled') {
-            badge.innerHTML = '<span style="color: var(--accent-amber);">⛔ Dibatalkan</span>';
-          } else {
-            badge.innerHTML = `<span style="color: var(--text-muted);">⚪ ${escapeHtml(r.badge || 'Unknown')}</span>`;
-          }
+          badge.innerHTML = getSpambotBadgeHtml({
+            spambot_status: r.status,
+            spambot_message: r.message,
+            badge: r.badge
+          });
+          badge.title = r.message || 'Klik untuk cek @SpamBot';
         }
       });
-      showToast(`Pengecekan selesai untuk ${data.results.length} akun`, 'success');
+      const summaryParts = [];
+      if (counts.clean) summaryParts.push(`Clean: ${counts.clean}`);
+      if (counts.frozen) summaryParts.push(`Frozen: ${counts.frozen}`);
+      if (counts.perm_limited) summaryParts.push(`Perm Limit: ${counts.perm_limited}`);
+      if (counts.geo_limited) summaryParts.push(`Limit Geo: ${counts.geo_limited}`);
+      if (counts.temp_limited) summaryParts.push(`Sementara: ${counts.temp_limited}`);
+      if (counts.content_limited) summaryParts.push(`Konten Publik: ${counts.content_limited}`);
+      if (counts.limited) summaryParts.push(`Limited Lain: ${counts.limited}`);
+      if (counts.banned) summaryParts.push(`Banned: ${counts.banned}`);
+      const detailStr = summaryParts.length > 0 ? ` (${summaryParts.join(', ')})` : '';
+      showToast(`Pengecekan selesai untuk ${data.results.length} akun${detailStr}`, 'success');
       if (accountPagination.spambot && accountPagination.spambot !== 'all') {
         loadAccounts();
       }
@@ -636,20 +649,39 @@ async function checkAllAccountsHealth() {
 // ----------------- SpamBot Badge Helper -----------------
 
 function getSpambotBadgeHtml(acc) {
-  if (acc.spambot_status === 'perm_limited') {
+  const status = acc.spambot_status;
+  if (status === 'frozen') {
+    return `<span style="color: #38bdf8; font-weight: 600;" title="${escapeHtml(acc.spambot_message || 'Akun Frozen / Diblokir karena pelanggaran ToS Telegram')}">❄️ Frozen Account</span>`;
+  }
+  if (status === 'perm_limited') {
     return `<span style="color: var(--accent-rose); font-weight: 600;" title="${escapeHtml(acc.spambot_message || 'Akun terkena Limit Permanen / Harsh response')}">🔴 Limit Permanen</span>`;
   }
-  if (acc.spambot_status === 'temp_limited') {
+  if (status === 'geo_limited') {
+    return `<span style="color: #fb923c; font-weight: 600;" title="${escapeHtml(acc.spambot_message || 'Akun terkena Limit Nomor / Geo')}">🟠 Limit Nomor / Geo</span>`;
+  }
+  if (status === 'temp_limited') {
     return `<span style="color: var(--accent-amber); font-weight: 600;" title="${escapeHtml(acc.spambot_message || 'Akun dibatasi sementara')}">🟡 Limit Sementara</span>`;
   }
-  if (acc.spambot_status === 'clean') {
+  if (status === 'content_limited') {
+    return `<span style="color: #c084fc; font-weight: 600;" title="${escapeHtml(acc.spambot_message || 'Akun dibatasi karena konten publik/ilegal')}">🟣 Limit Konten Publik</span>`;
+  }
+  if (status === 'clean') {
     return `<span style="color: var(--accent-green); font-weight: 600;" title="${escapeHtml(acc.spambot_message || 'Akun Normal, bebas limit')}">🟢 Clean / Normal</span>`;
   }
-  if (acc.spambot_status === 'limited') {
-    return `<span style="color: var(--accent-amber); font-weight: 600;" title="${escapeHtml(acc.spambot_message || 'Akun Limited')}">🟡 Limited</span>`;
+  if (status === 'limited') {
+    return `<span style="color: var(--accent-amber); font-weight: 600;" title="${escapeHtml(acc.spambot_message || 'Akun Limited')}">⚠️ Limited Lainnya</span>`;
   }
-  if (acc.spambot_status === 'banned') {
-    return `<span style="color: var(--accent-rose); font-weight: 600;" title="${escapeHtml(acc.spambot_message || 'Sesi mati')}">🔴 Banned/Mati</span>`;
+  if (status === 'banned') {
+    return `<span style="color: var(--accent-rose); font-weight: 600;" title="${escapeHtml(acc.spambot_message || 'Sesi mati / Banned')}">⛔ Banned / Mati</span>`;
+  }
+  if (status === 'cancelled') {
+    return '<span style="color: var(--accent-amber); font-weight: 600;">⛔ Dibatalkan</span>';
+  }
+  if (status === 'flood_wait') {
+    return `<span style="color: var(--accent-amber); font-weight: 600;" title="${escapeHtml(acc.spambot_message || 'FloodWait Telegram')}">⏳ Flood Wait</span>`;
+  }
+  if (status === 'unknown') {
+    return `<span style="color: var(--text-muted);" title="${escapeHtml(acc.spambot_message || '')}">⚪ ${escapeHtml(acc.badge || 'Unknown')}</span>`;
   }
   return '<span style="color: var(--accent-cyan); font-weight: 500;" title="Klik untuk cek status @SpamBot">🔍 Cek Status</span>';
 }
@@ -2524,6 +2556,23 @@ async function loadSessionManagerAccounts() {
 }
 window.loadSessionManagerAccounts = loadSessionManagerAccounts;
 
+function matchesSpambotFilter(acc, spambotVal) {
+  if (!spambotVal || spambotVal === 'all') return true;
+  const st = acc.spambot_status;
+  if (spambotVal === 'frozen') return st === 'frozen';
+  if (spambotVal === 'perm_limited') return st === 'perm_limited';
+  if (spambotVal === 'geo_limited') return st === 'geo_limited';
+  if (spambotVal === 'temp_limited') return st === 'temp_limited';
+  if (spambotVal === 'content_limited') return st === 'content_limited';
+  if (spambotVal === 'other_limited') return st === 'limited';
+  if (spambotVal === 'clean') return st === 'clean';
+  if (spambotVal === 'banned') return st === 'banned';
+  if (spambotVal === 'limited') return ['perm_limited', 'geo_limited', 'temp_limited', 'content_limited', 'limited'].includes(st);
+  if (spambotVal === 'problematic') return ['frozen', 'perm_limited', 'geo_limited', 'temp_limited', 'content_limited', 'limited', 'banned'].includes(st);
+  if (spambotVal === 'unverified') return !st;
+  return true;
+}
+
 function renderSessionManagerList() {
   const container = document.getElementById('session-manager-items');
   if (!container) return;
@@ -2546,11 +2595,7 @@ function renderSessionManagerList() {
 
   const list = cachedSessionAccounts.filter(acc => {
     // Filter by SpamBot Status
-    if (spambotVal === 'perm_limited' && acc.spambot_status !== 'perm_limited') return false;
-    if (spambotVal === 'temp_limited' && acc.spambot_status !== 'temp_limited') return false;
-    if (spambotVal === 'clean' && acc.spambot_status !== 'clean') return false;
-    if (spambotVal === 'limited' && !['perm_limited', 'temp_limited', 'limited'].includes(acc.spambot_status)) return false;
-    if (spambotVal === 'unverified' && !!acc.spambot_status) return false;
+    if (!matchesSpambotFilter(acc, spambotVal)) return false;
 
     // Filter by Telegram ID (prefix awalan ID, atau multiple awalan dipisah koma)
     if (idFilterVal) {
@@ -2689,11 +2734,7 @@ function initSessionManagerView() {
       const prefixes = idFilterVal ? idFilterVal.split(',').map(s => s.trim().replace(/^#/, '')).filter(Boolean) : [];
 
       cachedSessionAccounts.forEach(acc => {
-        if (spambotVal === 'perm_limited' && acc.spambot_status !== 'perm_limited') return;
-        if (spambotVal === 'temp_limited' && acc.spambot_status !== 'temp_limited') return;
-        if (spambotVal === 'clean' && acc.spambot_status !== 'clean') return;
-        if (spambotVal === 'limited' && !['perm_limited', 'temp_limited', 'limited'].includes(acc.spambot_status)) return;
-        if (spambotVal === 'unverified' && !!acc.spambot_status) return;
+        if (!matchesSpambotFilter(acc, spambotVal)) return;
 
         if (prefixes.length > 0) {
           const tgIdStr = String(acc.telegram_id || '');
@@ -2729,11 +2770,7 @@ function initSessionManagerView() {
 
       cachedSessionAccounts.forEach(acc => {
         if (!acc.is_active) return;
-        if (spambotVal === 'perm_limited' && acc.spambot_status !== 'perm_limited') return;
-        if (spambotVal === 'temp_limited' && acc.spambot_status !== 'temp_limited') return;
-        if (spambotVal === 'clean' && acc.spambot_status !== 'clean') return;
-        if (spambotVal === 'limited' && !['perm_limited', 'temp_limited', 'limited'].includes(acc.spambot_status)) return;
-        if (spambotVal === 'unverified' && !!acc.spambot_status) return;
+        if (!matchesSpambotFilter(acc, spambotVal)) return;
 
         if (prefixes.length > 0) {
           const tgIdStr = String(acc.telegram_id || '');

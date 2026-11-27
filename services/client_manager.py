@@ -88,6 +88,18 @@ def is_session_dead_or_revoked(e: Exception) -> bool:
     ]
     return any(k in msg for k in dead_keywords)
 
+def is_account_frozen_error(e: Exception) -> bool:
+    """Checks whether an exception indicates the Telegram account is frozen/read-only."""
+    err_name = type(e).__name__.lower()
+    err_msg = str(e).lower()
+    if "frozen" in err_name:
+        return True
+    return any(k in err_msg for k in (
+        "frozen_method_invalid",
+        "frozen_participant_missing",
+        "account is frozen",
+    ))
+
 class ClientManager:
     """Singleton to manage Telethon clients, login sessions, and connections."""
     
@@ -1396,6 +1408,332 @@ class ClientManager:
 
     # ------------------ Health & SpamBot Checker ------------------
 
+    _SPAMBOT_FROZEN_KEYWORDS = (
+        "blocked for violations",
+        "account was blocked",
+        "account has been blocked",
+        "telegram terms of service",
+        "telegram.org/tos",
+        "account is frozen",
+        "account has been frozen",
+        "has been frozen",
+        "frozen account",
+        "read-only mode",
+        "read-only",
+        "scheduled for deletion",
+        "akun anda diblokir",
+        "diblokir karena melanggar",
+        "diblokir karena pelanggaran",
+        "ketentuan layanan telegram",
+        "akun anda dibekukan",
+        "telah dibekukan",
+        "dibekukan",
+        "mode hanya-baca",
+        "mode hanya baca",
+        "аккаунт был заблокирован",
+        "заблокирован за нарушение",
+        "условий использования telegram",
+        "аккаунт заморожен",
+        "был заморожен",
+        "заморожен",
+        "режим только для чтения",
+        "cuenta fue bloqueada",
+        "cuenta ha sido bloqueada",
+        "bloqueada por infringir",
+        "términos de servicio de telegram",
+        "cuenta está congelada",
+        "congelada",
+        "conta foi bloqueada",
+        "bloqueada por violações",
+        "termos de serviço do telegram",
+        "conta está congelada",
+        "تم حظر حسابك",
+        "انتهاك شروط",
+        "شروط خدمة تيليجرام",
+        "تم تجميد حسابك",
+        "حسابك مجمد",
+        "hesabınız engellendi",
+        "telegram hizmet şartları",
+        "hesabınız donduruldu",
+        "donduruldu",
+        "compte a été bloqué",
+        "conditions d'utilisation de telegram",
+        "compte est gelé",
+        "konto wurde wegen verstößen",
+        "konto wurde gesperrt",
+        "nutzungsbedingungen von telegram",
+        "eingefroren",
+        "违反",
+        "服务条款",
+        "已被冻结",
+        "账号已冻结",
+        "帐户已冻结",
+        "tài khoản của bạn đã bị khóa",
+        "điều khoản dịch vụ",
+        "bị đóng băng",
+        "обліковий запис заблоковано",
+        "умов використання telegram",
+        "заморожено",
+    )
+
+    _SPAMBOT_CLEAN_KEYWORDS = (
+        "good news",
+        "no limits are currently applied",
+        "no limits",
+        "free as a bird",
+        "kabar baik",
+        "akun anda tidak dibatasi",
+        "tidak dibatasi",
+        "tidak ada batasan",
+        "sebebas burung",
+        "bebas dari batasan",
+        "хорошие новости",
+        "свободен от каких-либо ограничений",
+        "свободны, как птица",
+        "нет ограничений",
+        "никаких ограничений",
+        "buenas noticias",
+        "no hay límites",
+        "sin límites",
+        "no se aplican límites",
+        "libre como un pájaro",
+        "boas notícias",
+        "não há limites",
+        "sem limites",
+        "livre como um pássaro",
+        "bonne nouvelle",
+        "aucune limite",
+        "pas de limites",
+        "libre comme l'air",
+        "libre comme un oiseau",
+        "gute nachrichten",
+        "keine einschränkungen",
+        "frei wie ein vogel",
+        "buone notizie",
+        "nessuna limitazione",
+        "nessun limite",
+        "libero come un uccello",
+        "iyi haber",
+        "hiçbir kısıtlama",
+        "kısıtlama yok",
+        "kuş kadar özgür",
+        "أخبار سارة",
+        "لا توجد قيود",
+        "لا يوجد قيود",
+        "حر كالطير",
+        "خبر خوب",
+        "محدودیتی اعمال نشده",
+        "بدون محدودیت",
+        "好消息",
+        "没有任何限制",
+        "没有限制",
+        "tin tốt",
+        "không có giới hạn",
+        "không bị giới hạn",
+        "tự do như chim",
+        "гарні новини",
+        "жодних обмежень",
+        "немає обмежень",
+        "вільний як птах",
+        "goed nieuws",
+        "geen beperkingen",
+        "vrij als een vogel",
+        "dobre wieści",
+        "brak ograniczeń",
+        "wolny jak ptak",
+        "berita baik",
+        "tiada had",
+        "tidak dihadkan",
+    )
+
+    _SPAMBOT_TEMP_KEYWORDS = (
+        "limited until",
+        "automatically released",
+        "automatically lifted",
+        "will be lifted on",
+        "temporarily limited",
+        "temporary limit",
+        "temporarily",
+        "reduced times for initial limitations",
+        "dibatasi hingga",
+        "dibatasi sampai",
+        "dilepaskan secara otomatis",
+        "dilepas secara otomatis",
+        "dicabut secara otomatis",
+        "dibatasi sementara",
+        "batasan sementara",
+        "sementara waktu",
+        "ограничен до",
+        "ограничения будут автоматически сняты",
+        "автоматически сняты",
+        "временные ограничения",
+        "временно ограничен",
+        "limitada hasta",
+        "se liberará automáticamente",
+        "liberada automáticamente",
+        "temporalmente",
+        "limitada até",
+        "liberada automaticamente",
+        "temporariamente",
+        "limité jusqu'au",
+        "limité jusqu",
+        "automatiquement levée",
+        "temporairement",
+        "eingeschränkt bis",
+        "automatisch aufgehoben",
+        "vorübergehend",
+        "tarihine kadar kısıtlandı",
+        "otomatik olarak kaldırılacak",
+        "geçici olarak",
+        "مقيد حتى",
+        "رفع القيود تلقائيا",
+        "رفع القيود تلقائيًا",
+        "مؤقتا",
+        "مؤقتًا",
+        "限制至",
+        "自动解除",
+        "暂时",
+        "bị giới hạn cho đến",
+        "giới hạn cho đến",
+        "tự động gỡ bỏ",
+        "tạm thời",
+        "обмежено до",
+        "автоматично знято",
+        "тимчасово",
+    )
+
+    _SPAMBOT_CONTENT_KEYWORDS = (
+        "abuse@telegram.org",
+        "public content you posted",
+        "illegal public content",
+        "create new channels or post messages in other public places",
+        "konten publik",
+        "konten ilegal",
+        "membuat channel baru atau mengirim pesan di tempat publik",
+        "незаконный контент",
+        "публичный контент",
+        "создавать новые каналы",
+        "contenido público",
+        "contenido ilegal",
+        "crear nuevos canales",
+    )
+
+    _SPAMBOT_GEO_KEYWORDS = (
+        "some phone numbers may trigger",
+        "phone numbers may trigger",
+        "get less strict limits",
+        "beberapa nomor telepon dapat memicu",
+        "nomor telepon dapat memicu",
+        "batasan yang lebih longgar",
+        "некоторые номера телефонов могут вызывать",
+        "менее строгие ограничения",
+        "algunos números de teléfono pueden",
+        "límites menos estrictos",
+        "alguns números de telefone podem",
+        "limites menos rigorosos",
+        "بعض أرقام الهواتف",
+        "قيود أقل صرامة",
+        "bazı telefon numaraları",
+        "daha az katı kısıtlamalar",
+    )
+
+    _SPAMBOT_PERM_KEYWORDS = (
+        "harsh response",
+        "limited by mistake",
+        "i'm very sorry that you had to contact me",
+        "some actions can trigger",
+        "permanently limited",
+        "respon kasar",
+        "respons kasar",
+        "respons keras",
+        "respon keras",
+        "saya meminta maaf sedalam-dalamnya",
+        "dibatasi karena kesalahaan",
+        "dibatasi karena kesalahan",
+        "dibatasi secara tidak sengaja",
+        "beberapa tindakan dapat memicu",
+        "limit permanen",
+        "permanen",
+        "dura respuesta",
+        "respuesta severa",
+        "siento mucho que hayas tenido que contactarme",
+        "limitada por error",
+        "algunas acciones pueden generar",
+        "permanente",
+        "жесткую реакцию",
+        "жёсткую реакцию",
+        "очень жаль, что вам пришлось обратиться",
+        "некоторые действия могут вызывать",
+        "ограничен по ошибке",
+        "навсегда",
+        "resposta severa",
+        "sinto muito que você tenha tido que entrar em contato",
+        "limitada por engano",
+        "algumas ações podem",
+        "réponse sévère",
+        "désolé que vous ayez dû me contacter",
+        "limité par erreur",
+        "harte reaktion",
+        "tut mir sehr leid, dass sie mich kontaktieren mussten",
+        "versehentlich eingeschränkt",
+        "sert bir tepki",
+        "benimle iletişime geçmek zorunda kaldığınız için",
+        "yanlışlıkla kısıtlandığını",
+        "استجابة قاسية",
+        "رد فعل قاس",
+        "آسف جدًا",
+        "عن طريق الخطأ",
+        "بشكل دائم",
+        "严厉的回应",
+        "很抱歉您不得不联系我",
+        "误判",
+        "永久",
+        "phản ứng gay gắt",
+        "rất tiếc vì bạn phải liên hệ",
+        "bị giới hạn do nhầm lẫn",
+        "vĩnh viễn",
+        "жорстку реакцію",
+        "дуже шкода, що вам довелося звернутися",
+        "обмежено помилково",
+    )
+
+    _SPAMBOT_TEMP_DATE_RE = re.compile(
+        r"\b(?:until|hingga|sampai|hasta|jusqu'au|bis)\s+\d{1,2}\s+[a-zа-яё]+\s+\d{4}",
+        re.IGNORECASE,
+    )
+
+    @classmethod
+    def classify_spambot_response(cls, resp_text: Optional[str]) -> tuple[str, str, str]:
+        """Classifies a raw @SpamBot message across languages into (status, badge, message)."""
+        raw = (resp_text or "").strip()
+        if not raw:
+            return ("unknown", "Tidak Diketahui", "Respon @SpamBot kosong.")
+
+        normalized = (
+            raw.lower()
+            .replace("\u2019", "'")
+            .replace("\u2018", "'")
+            .replace("`", "'")
+            .replace("\u00b4", "'")
+            .replace("\u201c", '"')
+            .replace("\u201d", '"')
+        )
+        normalized = re.sub(r"\s+", " ", normalized)
+
+        if any(k in normalized for k in cls._SPAMBOT_FROZEN_KEYWORDS):
+            return ("frozen", "❄️ Frozen Account", raw)
+        if any(k in normalized for k in cls._SPAMBOT_CLEAN_KEYWORDS):
+            return ("clean", "🟢 Clean / Normal", raw)
+        if any(k in normalized for k in cls._SPAMBOT_TEMP_KEYWORDS) or cls._SPAMBOT_TEMP_DATE_RE.search(normalized):
+            return ("temp_limited", "🟡 Limit Sementara", raw)
+        if any(k in normalized for k in cls._SPAMBOT_CONTENT_KEYWORDS):
+            return ("content_limited", "🟣 Limit Konten Publik", raw)
+        if any(k in normalized for k in cls._SPAMBOT_GEO_KEYWORDS):
+            return ("geo_limited", "🟠 Limit Nomor / Geo", raw)
+        if any(k in normalized for k in cls._SPAMBOT_PERM_KEYWORDS):
+            return ("perm_limited", "🔴 Limit Permanen", raw)
+        return ("limited", "🟡 Limited Lainnya", raw)
+
     async def check_account_health(self, account_id: int, user_id: int) -> dict:
         """Queries official @SpamBot to verify account limitations and health."""
         account = await TelegramAccountModel.get_by_id(account_id, user_id)
@@ -1445,6 +1783,14 @@ class ClientManager:
                 "message": "Akun Telegram telah mati/ter-revoke dan telah otomatis dihapus dari daftar akun."
             }
         except Exception as e:
+            if is_account_frozen_error(e):
+                msg = f"❄️ Akun Frozen / Dibekukan oleh Telegram ({str(e)})"
+                await TelegramAccountModel.update_spambot_status(account_id, "frozen", msg)
+                return {
+                    "status": "frozen",
+                    "badge": "❄️ Frozen Account",
+                    "message": msg
+                }
             if is_session_dead_or_revoked(e):
                 cl = self._active_clients.pop(account_id, None)
                 if cl and cl.is_connected():
@@ -1463,38 +1809,14 @@ class ClientManager:
 
         # Conversation with @SpamBot
         try:
-            async with client.conversation("@SpamBot", timeout=12) as conv:
+            async with client.conversation("@SpamBot", timeout=15) as conv:
                 await conv.send_message("/start")
                 response = await conv.get_response()
-                text = response.text.lower()
-                resp_text = response.text.strip()
+                resp_text = (response.text or response.raw_text or "").strip()
 
-                # Deteksi Limit Permanen (Harsh response / limited by mistake)
-                is_perm = (
-                    "harsh response" in text or
-                    "limited by mistake" in text or
-                    "i’m very sorry that you had to contact me" in text or
-                    "i'm very sorry that you had to contact me" in text
-                )
-
-                if is_perm:
-                    status = "perm_limited"
-                    badge = "Limit Permanen"
-                    message = resp_text
-                elif "no limits" in text or "free" in text or "tidak ada batasan" in text or "good news" in text:
-                    status = "clean"
-                    badge = "Clean / Normal"
-                    message = resp_text or "Akun normal, tidak ada pembatasan dari Telegram."
-                elif "temporarily" in text or "until" in text:
-                    status = "temp_limited"
-                    badge = "Limit Sementara"
-                    message = resp_text
-                else:
-                    status = "limited"
-                    badge = "Limited / Muted"
-                    message = resp_text
-
-                await TelegramAccountModel.update_spambot_status(account_id, status, message)
+                status, badge, message = self.classify_spambot_response(resp_text)
+                if status != "unknown":
+                    await TelegramAccountModel.update_spambot_status(account_id, status, message)
                 return {
                     "status": status,
                     "badge": badge,
@@ -1505,7 +1827,7 @@ class ClientManager:
             await TelegramAccountModel.update_spambot_status(account_id, "limited", msg)
             return {
                 "status": "limited",
-                "badge": "Limited / Muted",
+                "badge": "🟡 Limited Lainnya",
                 "message": msg
             }
         except FloodWaitError as e:
@@ -1518,9 +1840,17 @@ class ClientManager:
             return {
                 "status": "unknown",
                 "badge": "Tidak Merespon",
-                "message": "@SpamBot tidak merespon dalam 12 detik."
+                "message": "@SpamBot tidak merespon dalam 15 detik."
             }
         except Exception as e:
+            if is_account_frozen_error(e):
+                msg = f"❄️ Akun Frozen / Dibekukan oleh Telegram ({str(e)})"
+                await TelegramAccountModel.update_spambot_status(account_id, "frozen", msg)
+                return {
+                    "status": "frozen",
+                    "badge": "❄️ Frozen Account",
+                    "message": msg
+                }
             return {
                 "status": "unknown",
                 "badge": "Error",
