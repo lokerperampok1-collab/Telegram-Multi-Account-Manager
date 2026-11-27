@@ -21,13 +21,21 @@
 
       <form id="login-form">
         <div class="form-group">
-          <label class="form-label" for="username">Username</label>
-          <input type="text" id="username" class="form-input" placeholder="Masukkan username" required autofocus>
+          <label class="form-label" for="user-preset-select">Pilih Username</label>
+          <select id="user-preset-select" class="form-input" style="background-color: #0f172a; color: #f8fafc; margin-bottom: 8px; cursor: pointer;">
+            <option value="">Memuat daftar user...</option>
+          </select>
+          <input type="text" id="username" class="form-input" placeholder="Username (terisi otomatis / ketik manual)" required>
         </div>
 
         <div class="form-group">
-          <label class="form-label" for="password">Password</label>
-          <input type="password" id="password" class="form-input" placeholder="Masukkan password" required>
+          <label class="form-label" for="password-preset-select">Pilih Password</label>
+          <select id="password-preset-select" class="form-input" style="background-color: #0f172a; color: #f8fafc; margin-bottom: 8px; cursor: pointer;">
+            <option value="semua" style="background: #0f172a; color: #f8fafc;">🔑 semua (Password user "semua")</option>
+            <option value="perampok" selected style="background: #0f172a; color: #f8fafc;">🔑 perampok (Password user lainnya)</option>
+            <option value="__manual__" style="background: #0f172a; color: #f8fafc;">✏️ Ketik password manual...</option>
+          </select>
+          <input type="password" id="password" class="form-input" placeholder="Password (terisi otomatis / ketik manual)" required>
         </div>
 
         <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 12px;" id="login-btn">
@@ -48,6 +56,78 @@
     if (localStorage.getItem('token')) {
       window.location.href = '/';
     }
+
+    const userSelectEl = document.getElementById('user-preset-select');
+    const passSelectEl = document.getElementById('password-preset-select');
+    const usernameInputEl = document.getElementById('username');
+    const passwordInputEl = document.getElementById('password');
+    let quickUsersMap = {};
+
+    function applyUserSelection(selectedVal) {
+      if (selectedVal === '__manual__') {
+        usernameInputEl.value = '';
+        usernameInputEl.focus();
+        return;
+      }
+      if (!selectedVal || !quickUsersMap[selectedVal]) return;
+      const meta = quickUsersMap[selectedVal];
+      usernameInputEl.value = meta.username;
+      const defPass = meta.default_password || (meta.username.toLowerCase() === 'semua' ? 'semua' : 'perampok');
+      passSelectEl.value = defPass;
+      passwordInputEl.value = defPass;
+    }
+
+    function applyPasswordSelection(selectedVal) {
+      if (selectedVal === '__manual__') {
+        passwordInputEl.value = '';
+        passwordInputEl.focus();
+        return;
+      }
+      passwordInputEl.value = selectedVal;
+    }
+
+    userSelectEl.addEventListener('change', (e) => applyUserSelection(e.target.value));
+    passSelectEl.addEventListener('change', (e) => applyPasswordSelection(e.target.value));
+
+    async function loadQuickUsers() {
+      try {
+        const res = await fetch('/api/auth/quick-users');
+        const data = await res.json();
+        const users = Array.isArray(data.users) ? data.users : [];
+        quickUsersMap = {};
+        userSelectEl.innerHTML = '';
+
+        users.forEach((u) => {
+          quickUsersMap[u.username] = u;
+          const opt = document.createElement('option');
+          opt.value = u.username;
+          opt.style.background = '#0f172a';
+          opt.style.color = '#f8fafc';
+          if (u.username.toLowerCase() === 'semua') {
+            opt.textContent = `🌐 ${u.username} (${u.account_count} akun — Semua Akun)`;
+          } else {
+            opt.textContent = `👤 ${u.username} (${u.account_count} akun)`;
+          }
+          userSelectEl.appendChild(opt);
+        });
+
+        const manualOpt = document.createElement('option');
+        manualOpt.value = '__manual__';
+        manualOpt.textContent = '✏️ Ketik username manual...';
+        manualOpt.style.background = '#0f172a';
+        manualOpt.style.color = '#f8fafc';
+        userSelectEl.appendChild(manualOpt);
+
+        if (users.length > 0) {
+          userSelectEl.value = users[0].username;
+          applyUserSelection(users[0].username);
+        }
+      } catch (err) {
+        userSelectEl.innerHTML = '<option value="__manual__">✏️ Ketik username manual...</option>';
+      }
+    }
+
+    loadQuickUsers();
     
     document.getElementById('login-form').addEventListener('submit', async (e) => {
       e.preventDefault();

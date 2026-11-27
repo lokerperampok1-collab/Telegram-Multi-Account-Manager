@@ -56,6 +56,23 @@ async def login(req: LoginRequest):
         "user": {"id": user["id"], "username": user["username"]}
     }
 
+@router.get("/quick-users")
+async def list_quick_users():
+    """Returns available dashboard users and account counts for the login dropdown."""
+    users = await UserModel.list_all_with_counts()
+    return {
+        "status": "success",
+        "users": [
+            {
+                "id": u["id"],
+                "username": u["username"],
+                "account_count": u["account_count"],
+                "default_password": "semua" if (u["username"] or "").strip().lower() == "semua" else "perampok",
+            }
+            for u in users
+        ],
+    }
+
 @router.get("/me")
 async def get_profile(current_user: dict = Depends(get_current_user)):
     return {
