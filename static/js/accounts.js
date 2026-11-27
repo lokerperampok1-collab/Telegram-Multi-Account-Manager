@@ -363,7 +363,18 @@ async function checkAccountHealth(accountId) {
       method: 'POST',
       headers: getAuthHeaders()
     });
-    const data = await res.json();
+    const rawText = await res.text();
+    let data = {};
+    try {
+      data = rawText ? JSON.parse(rawText) : {};
+    } catch (_) {}
+
+    if (!res.ok) {
+      const errMsg = data.detail || `Gagal memeriksa akun (HTTP ${res.status})`;
+      if (badge) badge.innerHTML = `<span style="color: var(--accent-rose);">Error (${res.status})</span>`;
+      showToast(errMsg, 'error');
+      return;
+    }
 
     if (data.account_deleted || data.session_revoked) {
       showToast(`⚠️ ${data.message || 'Sesi akun mati/ter-revoke dan telah otomatis dihapus dari dashboard.'}`, 'warning');
@@ -591,7 +602,11 @@ async function checkAllAccountsHealth() {
       headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     });
-    const data = await res.json();
+    const rawText = await res.text();
+    let data = {};
+    try {
+      data = rawText ? JSON.parse(rawText) : {};
+    } catch (_) {}
 
     if (res.ok && data.results) {
       const counts = {
@@ -631,7 +646,7 @@ async function checkAllAccountsHealth() {
         loadAccounts();
       }
     } else {
-      showToast(data.detail || 'Gagal memeriksa akun', 'error');
+      showToast(data.detail || `Gagal memeriksa akun (HTTP ${res.status})`, 'error');
     }
   } catch (e) {
     showToast('Koneksi server gagal', 'error');

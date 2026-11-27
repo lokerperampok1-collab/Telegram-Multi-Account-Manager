@@ -5,7 +5,9 @@ import aiosqlite
 from config import settings
 
 DB_TIMEOUT_SECONDS = 30.0
+DB_MAX_CONCURRENT_READS = 16
 _DB_WRITE_LOCKS: "weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, asyncio.Lock]" = weakref.WeakKeyDictionary()
+_DB_READ_SEMAPHORES: "weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, asyncio.Semaphore]" = weakref.WeakKeyDictionary()
 
 
 def _get_write_lock() -> asyncio.Lock:
@@ -17,18 +19,28 @@ def _get_write_lock() -> asyncio.Lock:
     return lock
 
 
+def _get_read_semaphore() -> asyncio.Semaphore:
+    loop = asyncio.get_running_loop()
+    sem = _DB_READ_SEMAPHORES.get(loop)
+    if sem is None:
+        sem = asyncio.Semaphore(DB_MAX_CONCURRENT_READS)
+        _DB_READ_SEMAPHORES[loop] = sem
+    return sem
+
+
 @asynccontextmanager
 async def db_connect(write: bool = False):
-    """Async SQLite connection helper with WAL/busy_timeout and serialized writes per event loop."""
+    """Async SQLite connection helper with WAL/busy_timeout and bounded read/write concurrency per event loop."""
     if write:
         async with _get_write_lock():
             async with aiosqlite.connect(settings.DB_PATH, timeout=DB_TIMEOUT_SECONDS) as db:
                 await db.execute("PRAGMA busy_timeout = 30000;")
                 yield db
     else:
-        async with aiosqlite.connect(settings.DB_PATH, timeout=DB_TIMEOUT_SECONDS) as db:
-            await db.execute("PRAGMA busy_timeout = 30000;")
-            yield db
+        async with _get_read_semaphore():
+            async with aiosqlite.connect(settings.DB_PATH, timeout=DB_TIMEOUT_SECONDS) as db:
+                await db.execute("PRAGMA busy_timeout = 30000;")
+                yield db
 
 
 async def get_db():

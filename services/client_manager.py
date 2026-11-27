@@ -1,4 +1,5 @@
 import io
+import os
 import re
 import uuid
 import json
@@ -155,6 +156,8 @@ class ClientManager:
             await asyncio.sleep(step)
             elapsed += step
 
+    MAX_PARALLEL_WORKERS = max(1, int(os.getenv("MAX_PARALLEL_WORKERS", "60") or "60"))
+
     async def _run_parallel_bulk(
         self,
         op_prefix: str,
@@ -164,23 +167,36 @@ class ClientManager:
         delay_seconds: float = 0.0,
         cancel_row_fn=None,
     ) -> list[dict]:
-        """Runs worker_fn(idx, item, op_id) across all items concurrently in full parallel."""
+        """Runs worker_fn(idx, item, op_id) concurrently with bounded worker pool and exception isolation."""
         op_id = f"{op_prefix}_{uuid.uuid4().hex[:8]}"
         self._start_operation(op_id, description)
+        sem = asyncio.Semaphore(self.MAX_PARALLEL_WORKERS)
 
         async def _task(idx: int, item):
-            if delay_seconds > 0 and idx > 0:
-                await self._interruptible_sleep(idx * delay_seconds, op_id)
-            if self._is_cancelled(op_id):
-                if cancel_row_fn:
-                    return cancel_row_fn(idx, item)
-                return {
-                    "account_id": item.get("id", 0) if isinstance(item, dict) else (item if isinstance(item, int) else 0),
-                    "name": (item.get("display_name") or item.get("phone_number") or "—") if isinstance(item, dict) else "—",
-                    "status": "cancelled",
-                    "message": "Proses dihentikan oleh pengguna",
-                }
-            return await worker_fn(idx, item, op_id)
+            async with sem:
+                if delay_seconds > 0 and idx > 0:
+                    await self._interruptible_sleep(idx * delay_seconds, op_id)
+                if self._is_cancelled(op_id):
+                    if cancel_row_fn:
+                        return cancel_row_fn(idx, item)
+                    return {
+                        "account_id": item.get("id", 0) if isinstance(item, dict) else (item if isinstance(item, int) else 0),
+                        "name": (item.get("display_name") or item.get("phone_number") or "—") if isinstance(item, dict) else "—",
+                        "status": "cancelled",
+                        "message": "Proses dihentikan oleh pengguna",
+                    }
+                try:
+                    return await worker_fn(idx, item, op_id)
+                except Exception as e:
+                    acc_id = item.get("id", 0) if isinstance(item, dict) else (item if isinstance(item, int) else 0)
+                    acc_name = (item.get("display_name") or item.get("phone_number") or f"Akun #{acc_id}") if isinstance(item, dict) else f"Akun #{acc_id}"
+                    return {
+                        "account_id": acc_id,
+                        "name": acc_name,
+                        "status": "error",
+                        "badge": "Error",
+                        "message": str(e),
+                    }
 
         try:
             return list(await asyncio.gather(*(_task(idx, item) for idx, item in enumerate(items))))
@@ -1809,7 +1825,7 @@ class ClientManager:
 
         # Conversation with @SpamBot
         try:
-            async with client.conversation("@SpamBot", timeout=15) as conv:
+            async with client.conversation("@SpamBot", timeout=12) as conv:
                 await conv.send_message("/start")
                 response = await conv.get_response()
                 resp_text = (response.text or response.raw_text or "").strip()
@@ -1840,7 +1856,7 @@ class ClientManager:
             return {
                 "status": "unknown",
                 "badge": "Tidak Merespon",
-                "message": "@SpamBot tidak merespon dalam 15 detik."
+                "message": "@SpamBot tidak merespon dalam 12 detik."
             }
         except Exception as e:
             if is_account_frozen_error(e):

@@ -1,9 +1,11 @@
 import aiosqlite
 from typing import Optional, List, Dict, Any
 from datetime import datetime
+from config import settings
 from database.db import db_connect
 
 class UserModel:
+    _ALL_ACCESS_CACHE: Dict[tuple[str, int], bool] = {}
     @staticmethod
     async def create(username: str, password_hash: str) -> Optional[int]:
         async with db_connect(write=True) as db:
@@ -39,6 +41,10 @@ class UserModel:
     @staticmethod
     async def is_all_access_user(user_id: int) -> bool:
         """Returns True if the user is the special 'semua' supervisor user."""
+        cache_key = (str(settings.DB_PATH), user_id)
+        cached = UserModel._ALL_ACCESS_CACHE.get(cache_key)
+        if cached is not None:
+            return cached
         async with db_connect(write=False) as db:
             db.row_factory = aiosqlite.Row
             cursor = await db.execute(
@@ -46,9 +52,9 @@ class UserModel:
                 (user_id,)
             )
             row = await cursor.fetchone()
-            if not row:
-                return False
-            return (row["username"] or "").strip().lower() == "semua"
+            is_all = bool(row and (row["username"] or "").strip().lower() == "semua")
+            UserModel._ALL_ACCESS_CACHE[cache_key] = is_all
+            return is_all
 
     @staticmethod
     async def list_all_with_counts() -> List[dict]:
