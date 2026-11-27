@@ -2844,17 +2844,19 @@ class ClientManager:
         return exported
 
     async def export_sessions_zip(self, user_id: int, account_ids: Optional[list[int]] = None) -> bytes:
-        """Creates a ZIP archive containing individual Telethon .session files, .json info files, and bulk lists."""
+        """Creates a ZIP archive containing only Telethon .session files per account."""
         data = await self.export_sessions(user_id, account_ids=account_ids)
-        api_id, api_hash = self._get_credentials()
 
         from services.session_importer import string_session_to_sqlite_bytes
 
         zip_buf = io.BytesIO()
+        used_names = set()
         with zipfile.ZipFile(zip_buf, 'w', zipfile.ZIP_DEFLATED) as zf:
-            txt_lines = []
             for acc in data:
                 session_str = acc.get("session_string") or ""
+                if not session_str:
+                    continue
+
                 raw_phone = (acc.get("phone_number") or "").replace("+", "").strip()
                 raw_phone = re.sub(r'[^0-9]', '', raw_phone)
                 tg_id = acc.get("telegram_id") or ""
@@ -2867,35 +2869,13 @@ class ClientManager:
                 else:
                     base_filename = f"account_{acc_id}"
 
-                # 1. Telethon SQLite .session file
-                if session_str:
-                    txt_lines.append(session_str)
-                    sqlite_bytes = string_session_to_sqlite_bytes(session_str)
-                    if sqlite_bytes:
-                        zf.writestr(f"{base_filename}.session", sqlite_bytes)
+                if base_filename in used_names:
+                    base_filename = f"{base_filename}_{acc_id}"
+                used_names.add(base_filename)
 
-                # 2. Individual JSON metadata file (standard tool format)
-                acc_json = {
-                    "session_file": f"{base_filename}.session",
-                    "phone": acc.get("phone_number"),
-                    "telegram_id": acc.get("telegram_id"),
-                    "display_name": acc.get("display_name"),
-                    "username": acc.get("username"),
-                    "app_id": api_id,
-                    "app_hash": api_hash,
-                    "twofa_password": acc.get("twofa_password"),
-                    "twofa_hint": acc.get("twofa_hint"),
-                    "has_2fa": acc.get("has_2fa"),
-                    "session_string": session_str
-                }
-                zf.writestr(f"{base_filename}.json", json.dumps(acc_json, indent=2))
-
-            # 3. sessions.txt with all string sessions
-            if txt_lines:
-                zf.writestr("sessions.txt", "\n".join(txt_lines))
-
-            # 4. sessions_backup.json with full account list
-            zf.writestr("sessions_backup.json", json.dumps(data, indent=2))
+                sqlite_bytes = string_session_to_sqlite_bytes(session_str)
+                if sqlite_bytes:
+                    zf.writestr(f"{base_filename}.session", sqlite_bytes)
 
         zip_buf.seek(0)
         return zip_buf.getvalue()
