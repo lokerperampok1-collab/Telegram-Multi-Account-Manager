@@ -429,7 +429,8 @@ window.setupUniversalChecklist = function({
   cachedAccountsGetter,
   selectedIdsSet = null,
   extraBadgesRenderer = null,
-  onSelectionChanged = null
+  onSelectionChanged = null,
+  statusFilterMode = 'online'
 }) {
   const searchInput = document.getElementById(`${prefix}-search-accounts`);
   const searchClearBtn = document.getElementById(`${prefix}-search-clear-btn`);
@@ -453,9 +454,13 @@ window.setupUniversalChecklist = function({
     const prefixes = idVal ? idVal.split(',').map(s => s.trim().replace(/^#/, '')).filter(Boolean) : [];
 
     return rawAccounts.filter(acc => {
-      const isOnline = !!acc.is_active;
-      if (statusVal === 'online' && !isOnline) return false;
-      if (statusVal === 'offline' && isOnline) return false;
+      if (statusFilterMode === 'spambot') {
+        if (window.matchesSpambotFilter && !window.matchesSpambotFilter(acc, statusVal)) return false;
+      } else {
+        const isOnline = !!acc.is_active;
+        if (statusVal === 'online' && !isOnline) return false;
+        if (statusVal === 'offline' && isOnline) return false;
+      }
 
       // Strict prefix matching for TG ID (e.g. "9", "62, 78")
       if (prefixes.length > 0) {
@@ -495,9 +500,11 @@ window.setupUniversalChecklist = function({
         : '';
 
       const extraBadges = extraBadgesRenderer ? extraBadgesRenderer(acc) : '';
-      const statusBadge = isOnline 
-        ? '<span style="color: var(--accent-green); font-size: 0.74rem; font-weight: 600;">● Online</span>'
-        : '<span style="color: var(--text-muted); font-size: 0.74rem;">○ Offline</span>';
+      const statusBadge = statusFilterMode === 'spambot'
+        ? `<span style="font-size: 0.74rem; flex-shrink: 0;">${window.getSpambotBadgeHtml ? window.getSpambotBadgeHtml(acc) : ''}</span>`
+        : (isOnline
+          ? '<span style="color: var(--accent-green); font-size: 0.74rem; font-weight: 600;">● Online</span>'
+          : '<span style="color: var(--text-muted); font-size: 0.74rem;">○ Offline</span>');
 
       return `
         <label style="display: flex; align-items: center; gap: 8px; font-size: 0.8rem; padding: 5px 8px; margin-bottom: 3px; border-radius: 6px; cursor: pointer; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.04); transition: background 0.15s;">

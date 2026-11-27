@@ -1907,7 +1907,6 @@ Halo semuanya, selamat beraktivitas ya</textarea>
             <div style="display: flex; gap: 8px; margin-bottom: 10px; align-items: center; flex-wrap: wrap;">
               <button type="button" class="btn-pill" id="export-select-all">Pilih Semua</button>
               <button type="button" class="btn-pill" id="export-select-none">Batal Semua</button>
-              <button type="button" class="btn-pill" id="export-select-online">Online Saja</button>
 
               <div class="search-box" style="flex: 1; min-width: 140px;">
                 <svg class="search-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -1924,10 +1923,19 @@ Halo semuanya, selamat beraktivitas ya</textarea>
                 <button class="id-filter-clear-btn" id="export-id-clear-btn" title="Reset filter TG ID" style="display: none;">&times;</button>
               </div>
 
-              <select id="export-status-filter" class="filter-select" style="padding: 4px 8px; font-size: 0.76rem;">
-                <option value="all">Semua Status</option>
-                <option value="online">Online Saja</option>
-                <option value="offline">Offline Saja</option>
+              <select id="export-status-filter" class="filter-select" style="padding: 4px 8px; font-size: 0.76rem;" title="Filter Status @SpamBot">
+                <option value="all">Semua (@SpamBot)</option>
+                <option value="clean">🟢 Clean / Normal</option>
+                <option value="frozen">❄️ Frozen Account</option>
+                <option value="perm_limited">🔴 Limit Permanen (Harsh)</option>
+                <option value="geo_limited">🟠 Limit Nomor / Geo</option>
+                <option value="temp_limited">🟡 Limit Sementara</option>
+                <option value="content_limited">🟣 Limit Konten Publik</option>
+                <option value="other_limited">⚠️ Limited Lainnya</option>
+                <option value="limited">⚠️ Semua Limited</option>
+                <option value="problematic">🚫 Semua Bermasalah (Limit + Frozen)</option>
+                <option value="banned">⛔ Banned / Mati</option>
+                <option value="unverified">❓ Belum Dicek</option>
               </select>
             </div>
             <div id="export-account-items" style="max-height: 250px; overflow-y: auto; padding-right: 4px;">
@@ -2032,8 +2040,8 @@ Halo semuanya, selamat beraktivitas ya</textarea>
 
   <!-- Scripts -->
   <script src="/static/js/app.js?v=20261108"></script>
-  <script src="/static/js/accounts.js?v=20261108"></script>
-  <script src="/static/js/telegram-login.js?v=20261108"></script>
+  <script src="/static/js/accounts.js?v=20261128"></script>
+  <script src="/static/js/telegram-login.js?v=20261128"></script>
   <script src="/static/js/transfer.js?v=20261113"></script>
 </body>
 </html>

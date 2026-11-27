@@ -1060,6 +1060,7 @@ function initExportChecklist() {
     checkboxClass: 'export-acc-checkbox',
     cachedAccountsGetter: () => cachedExportAccounts,
     selectedIdsSet: selectedExportAccountIds,
+    statusFilterMode: 'spambot',
     extraBadgesRenderer: (acc) => {
       return acc.twofa_password 
         ? `<span style="color: var(--accent-green); font-size: 0.72rem;">[2FA: ${escapeHtml(acc.twofa_password)}]</span>` 
@@ -1099,7 +1100,7 @@ function renderExportChecklist(accounts) {
         <span style="flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
           <strong>${escapeHtml(name)}</strong> (${escapeHtml(acc.phone_number || '-')}) ${tgIdBadge} ${twofaBadge}
         </span>
-        ${isOnline ? '<span style="color: var(--accent-green); font-size: 0.75rem;">● Online</span>' : '<span style="color: var(--text-muted); font-size: 0.75rem;">○ Offline</span>'}
+        <span style="font-size: 0.74rem; flex-shrink: 0;">${getSpambotBadgeHtml(acc)}</span>
       </label>
     `;
   }).join('');
@@ -2587,6 +2588,7 @@ function matchesSpambotFilter(acc, spambotVal) {
   if (spambotVal === 'unverified') return !st;
   return true;
 }
+window.matchesSpambotFilter = matchesSpambotFilter;
 
 function renderSessionManagerList() {
   const container = document.getElementById('session-manager-items');
